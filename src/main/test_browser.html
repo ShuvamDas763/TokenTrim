@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html>
+<head><title>Segment Parser Tests</title></head>
+<body>
+<pre id="output"></pre>
+<script>
+// ============================================
+// INLINE COPY OF segment-parser.js (no require)
+// ============================================
+const SEGMENT_TYPES = {
+  CODE_BLOCK: 'code_block',
+  INLINE_CODE: 'inline_code',
+  QUOTED: 'quoted',
+  URL: 'url',
+  NUMBER: 'number',
+  EDITABLE: 'editable',
+};
+
+const PROTECTED_TYPES = new Set([
+  SEGMENT_TYPES.CODE_BLOCK,
+  SEGMENT_TYPES.INLINE_CODE,
+  SEGMENT_TYPES.QUOTED,
+  SEGMENT_TYPES.URL,
+  SEGMENT_TYPES.NUMBER,
+]);
+
+const PATTERNS = [
+  { type: SEGMENT_TYPES.CODE_BLOCK, regex: /```[\s\S]*?```/g },
+  { type: SEGMENT_TYPES.INLINE_CODE, regex: /`[^`\n]+`/g },
+  { type: SEGMENT_TYPES.URL, regex: /(?:https?:\/\/|www\.)[^\s<>"'`,;)\]]+/gi },
+  { type: SEGMENT_TYPES.QUOTED, regex: /"(?:[^"\\]|\\.)*"/g },
+  { type: SEGMENT_TYPES.QUOTED, regex: /(?<![a-zA-Z])'(?:[^'\\]|\\.){2,}'(?![a-zA-Z])/g },
+  {
+    type: SEGMENT_TYPES.NUMBER,
+    regex: /(?<![a-zA-Z])(\d[\d,.\-:\/\+\(\)]{1,}[\d]|\d+(?:\.\d+)?%?)(?:ms|[smhd]|px|r?em|vh|vw|[kmgt]i?b|fps|hz|dpi|pt)?(?![a-zA-Z])/gi,
+  },
+];
+
+function isIndentedCode(text) {
+  const lines = text.split('\n');
+  if (lines.length < 3) return false;
+  let indentedCount = 0;
+  let bracketDensity = 0;
+  let codeTokenCount = 0;
+  const codeRegex = /\b(function|const|let|var|if\s*\(|for\s*\(|return|import|export|class)\b|===|==|=>/g;
+  for (const line of lines) {
+    if (line.trim().length === 0) continue;
+    if (line.match(/^[ \t]+/)) indentedCount++;
+    bracketDensity += (line.match(/[{}()\[\];=<>]/g) || []).length;
+    codeTokenCount += (line.match(codeRegex) || []).length;
+    if (line.trim().endsWith(';')) codeTokenCount++;
+  }
+  const nonEmptyLines = lines.filter(l => l.trim().length > 0).length;
+  if (nonEmptyLines === 0) return false;
+  const indentRatio = indentedCount / nonEmptyLines;
+  const avgBrackets = bracketDensity / nonEmptyLines;
+  const avgTokens = codeTokenCount / nonEmptyLines;
+  let score = 0;
+  if (indentRatio > 0.5) score += 2;
+  else if (indentRatio > 0.1) score += 1;
+  if (avgBrackets > 1.0) score += 2;
+  else if (avgBrackets > 0.4) score += 1;
+  if (avgTokens > 0.4) score += 3;
+  else if (avgTokens > 0.1) score += 1;
+  return score >= 3;
+}
+
+function parseSegments(text) {
+  const protectedRanges = [];
+  const applyPatterns = (patternsList) => {
+    for (const pattern of patternsList) {
+      const regex = new RegExp(pattern.regex.source, pattern.regex.flags);
+      let match;
+      while ((match = regex.exec(text)) !== null) {
+        if (pattern.type === SEGMENT_TYPES.QUOTED) {
+          if (match[0].length > 200 || /\n\s*\n/.test(match[0])) {
+            regex.lastIndex = match.index + 1;
+            continue;
+          }
+        }
+        const start = match.index;
+        const end = start + match[0].length;
+        const overlaps = protectedRanges.some(r => start < r.end && end > r.start);
+        if (!overlaps) {
+          protectedRanges.push({ type: pattern.type, start, end, content: match[0] });
+        }
+      }
+    }
+  };
+  const priorityPatterns = PATTERNS.filter(p =>
+    p.type === SEGMENT_TYPES.CODE_BLOCK || p.type === SEGMENT_TYPES.INLINE_CODE
+  );
+  applyPatterns(priorityPatterns);
+  const lines = text.split('\n');
+  let blockStart = -1;
+  let blockLines = [];
+  let emptyCount = 0;
+  let balance = 0;
+  let pendingEmptyLines = [];
+  const processBlock = () => {
+    if (balance === 0 && blockLines.length >= 3) {
+      const blockText = blockLines.join('\n');
+      if (isIndentedCode(blockText)) {
+        let startPos = 0;
+        for (let j = 0; j < blockStart; j++) {
+          startPos += lines[j].length + 1;
+        }
+        const endPos = startPos + blockText.length;
+        const overlaps = protectedRanges.some(r => startPos < r.end && endPos > r.start);
+        if (!overlaps) {
+          protectedRanges.push({ type: SEGMENT_TYPES.CODE_BLOCK, start: startPos, end: endPos, content: blockText });
+        }
+      }
+    }
+    blockStart = -1;
+    blockLines = [];
+    emptyCount = 0;
+    balance = 0;
+    pendingEmptyLines = [];
+  };
+  const isCodeLine = (line) => {
+    if (line.trim().length === 0) return 'empty';
+    if (/^[ \t]+/.test(line)) return true;
+    if (/\b(function|const|let|var|if\s*\(|for\s*\(|while\s*\(|return|import|export|class)\b/.test(line)) return true;
+    if (/===|==|=>|\+=|-=|\*=/.test(line)) return true;
+    if (/[;{}]\s*$/.test(line)) return true;
+    if (/^[}\s\])]+;?\s*$/.test(line)) return true;
+    return false;
+  };
+  const getLineDelta = (line) => {
+    const open = (line.match(/[\{\[\(]/g) || []).length;
+    const close = (line.match(/[\}\]\)]/g) || []).length;
+    return open - close;
+  };
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const isCode = isCodeLine(line);
+    const lineDelta = getLineDelta(line);
+    if (blockStart === -1) {
+      if (isCode === true) {
+        blockStart = i;
+        balance = Math.max(0, lineDelta);
+        blockLines.push(line);
+        emptyCount = 0;
+        pendingEmptyLines = [];
+      }
+    } else {
+      if (balance > 0) {
+        if (line.trim().length === 0) {
+          emptyCount++;
+          pendingEmptyLines.push(line);
+          if (emptyCount > 2) { processBlock(); }
+        } else {
+          blockLines.push(...pendingEmptyLines);
+          pendingEmptyLines = [];
+          emptyCount = 0;
+          balance += lineDelta;
+          if (balance < 0) balance = 0;
+          blockLines.push(line);
+          if (blockLines.length > 50) { processBlock(); }
+        }
+      } else {
+        if (isCode === true) {
+          blockLines.push(...pendingEmptyLines);
+          pendingEmptyLines = [];
+          emptyCount = 0;
+          balance = Math.max(0, lineDelta);
+          blockLines.push(line);
+        } else if (isCode === 'empty') {
+          emptyCount++;
+          pendingEmptyLines.push(line);
+          if (emptyCount > 2) { processBlock(); }
+        } else {
+          processBlock();
+        }
+      }
+    }
+  }
+  processBlock();
+  const secondaryPatterns = PATTERNS.filter(p =>
+    p.type !== SEGMENT_TYPES.CODE_BLOCK && p.type !== SEGMENT_TYPES.INLINE_CODE
+  );
+  applyPatterns(secondaryPatterns);
+  protectedRanges.sort((a, b) => a.start - b.start);
+  const segments = [];
+  let cursor = 0;
+  for (const range of protectedRanges) {
+    if (range.start > cursor) {
+      segments.push({ type: SEGMENT_TYPES.EDITABLE, content: text.slice(cursor, range.start), start: cursor, end: range.start, protected: false });
+    }
+    segments.push({ type: range.type, content: range.content, start: range.start, end: range.end, protected: true });
+    cursor = range.end;
+  }
+  if (cursor < text.length) {
+    segments.push({ type: SEGMENT_TYPES.EDITABLE, content: text.slice(cursor), start: cursor, end: text.length, protected: false });
+  }
+  return segments;
+}
+
+// ============================================
+// TEST RUNNER
+// ============================================
+const out = document.getElementById('output');
+function log(msg) { out.textContent += msg + '\n'; }
+
+let passed = 0;
+let failed = 0;
+
+function test(name, fn) {
+  try {
+    fn();
+    log(`  PASS: ${name}`);
+    passed++;
+  } catch (e) {
+    log(`  FAIL: ${name}`);
+    log(`        ${e.message}`);
+    failed++;
+  }
+}
+function assert(cond, msg) { if (!cond) throw new Error(msg || 'Assertion failed'); }
+
+// === Test Group 1 ===
+log('\n=== Test Group 1: Fenced code blocks ===');
+test('fenced block with object literal stays as one code_block', () => {
+  const input = "Here is some config:\n\n```\nconst config = {\n  retries: 3,\n  timeout: 5000\n};\n```\n\nDoes this look right?";
+  const segs = parseSegments(input);
+  const codeBlocks = segs.filter(s => s.type === 'code_block');
+  assert(codeBlocks.length === 1, `Expected 1 code_block, got ${codeBlocks.length}`);
+  assert(codeBlocks[0].content.includes('retries: 3'), 'code_block should contain retries: 3');
+  assert(codeBlocks[0].content.includes('timeout: 5000'), 'code_block should contain timeout: 5000');
+  const numbers = segs.filter(s => s.type === 'number');
+  assert(numbers.length === 0, `Expected 0 standalone numbers, got ${numbers.length}: ${numbers.map(n=>n.content).join(', ')}`);
+});
+test('fenced block with function stays as one code_block', () => {
+  const input = "Check this:\n\n```\nfunction fetchData(url) {\n  return fetch(url).then(res => res.json());\n}\n```\n\nLooks good?";
+  const segs = parseSegments(input);
+  const codeBlocks = segs.filter(s => s.type === 'code_block');
+  assert(codeBlocks.length === 1, `Expected 1 code_block, got ${codeBlocks.length}`);
+  assert(codeBlocks[0].content.includes('fetchData'), 'code_block should contain fetchData');
+  assert(codeBlocks[0].content.includes('return fetch'), 'code_block should contain return fetch');
+});
+
+// === Test Group 2 ===
+log('\n=== Test Group 2: Diagnostic3 test case ===');
+test('diagnostic3 input: both code blocks protected, no numbers extracted', () => {
+  const input = "So I've been meaning to ask, do you think it's worth refactoring this whole module or should we just patch it for now? I don't want to just kind of rush into a decision, you know? Anyway here's the relevant part:\n\n```\nconst config = {\n  retries: 3,\n  timeout: 5000\n};\n\nfunction fetchData(url) {\n  return fetch(url).then(res => res.json());\n}\n```\n\nI guess my main question is just whether it's going to cause issues down the line if we don't fix it properly now. Let me know what you think when you get a chance!";
+  const segs = parseSegments(input);
+  const codeBlocks = segs.filter(s => s.type === 'code_block');
+  assert(codeBlocks.length === 1, `Expected 1 fenced code_block, got ${codeBlocks.length}`);
+  assert(codeBlocks[0].content.includes('retries: 3'), 'code_block must include retries: 3');
+  assert(codeBlocks[0].content.includes('timeout: 5000'), 'code_block must include timeout: 5000');
+  assert(codeBlocks[0].content.includes('fetchData'), 'code_block must include fetchData');
+  const numbers = segs.filter(s => s.type === 'number');
+  assert(numbers.length === 0, `Expected 0 standalone numbers, got ${numbers.length}: ${JSON.stringify(numbers.map(n=>n.content))}`);
+});
+
+// === Test Group 3 ===
+log('\n=== Test Group 3: Unfenced (heuristic) code blocks ===');
+test('unfenced multi-line object with non-code property lines stays grouped', () => {
+  const input = "Here is the config we use:\n\nconst config = {\n  retries: 3,\n  timeout: 5000,\n  maxBuffer: 1024\n};\n\nWhat do you think?";
+  const segs = parseSegments(input);
+  const codeBlocks = segs.filter(s => s.type === 'code_block');
+  if (codeBlocks.length > 0) {
+    const block = codeBlocks[0];
+    assert(block.content.includes('retries: 3'), 'heuristic code_block should include retries: 3');
+    assert(block.content.includes('timeout: 5000'), 'heuristic code_block should include timeout: 5000');
+    assert(block.content.includes('maxBuffer: 1024'), 'heuristic code_block should include maxBuffer: 1024');
+    log(`        [info] Heuristic block content: ${JSON.stringify(block.content.substring(0, 100))}`);
+  } else {
+    const nums = segs.filter(s => s.type === 'number');
+    const standaloneThree = nums.find(n => n.content.trim() === '3');
+    assert(!standaloneThree, 'Number "3" should NOT be extracted as standalone');
+    log('        [info] No heuristic block detected but numbers OK');
+  }
+});
+test('unfenced function block stays grouped', () => {
+  const input = "Try this approach:\n\nfunction processItems(items) {\n  const results = [];\n  for (const item of items) {\n    results.push(item.value);\n  }\n  return results;\n}\n\nLet me know.";
+  const segs = parseSegments(input);
+  const codeBlocks = segs.filter(s => s.type === 'code_block');
+  assert(codeBlocks.length >= 1, `Expected at least 1 code_block, got ${codeBlocks.length}`);
+  const block = codeBlocks[0];
+  assert(block.content.includes('processItems'), 'should contain function name');
+  assert(block.content.includes('results.push'), 'should contain inner body');
+  assert(block.content.includes('return results'), 'should contain return statement');
+});
+
+// === Test Group 4 ===
+log('\n=== Test Group 4: Numbers in prose still work ===');
+test('standalone numbers in prose are still detected', () => {
+  const input = "We had 42 errors and the latency was 150ms on average.";
+  const segs = parseSegments(input);
+  const numbers = segs.filter(s => s.type === 'number');
+  const found42 = numbers.some(n => n.content === '42');
+  const found150ms = numbers.some(n => n.content === '150ms');
+  assert(found42, 'Should detect number 42 in prose');
+  assert(found150ms, `Should detect "150ms". Got: ${JSON.stringify(numbers.map(n=>n.content))}`);
+});
+test('numbers with various unit suffixes are detected whole', () => {
+  const input = "The timeout is 5s, the width is 200px, the file is 1024kb, it runs at 60fps.";
+  const segs = parseSegments(input);
+  const numbers = segs.filter(s => s.type === 'number');
+  const contents = numbers.map(n => n.content);
+  assert(contents.some(c => c === '5s'), `Should detect "5s". Got: ${JSON.stringify(contents)}`);
+  assert(contents.some(c => c === '200px'), `Should detect "200px". Got: ${JSON.stringify(contents)}`);
+  assert(contents.some(c => c === '1024kb'), `Should detect "1024kb". Got: ${JSON.stringify(contents)}`);
+  assert(contents.some(c => c === '60fps'), `Should detect "60fps". Got: ${JSON.stringify(contents)}`);
+});
+
+// === Test Group 5 ===
+log('\n=== Test Group 5: Safety cap on runaway blocks ===');
+test('unbalanced brace with >50 lines triggers safety cap', () => {
+  let codeLines = ['const x = {'];
+  for (let i = 0; i < 55; i++) { codeLines.push(`  line${i}: ${i},`); }
+  const input = "Some intro text.\n\n" + codeLines.join('\n') + "\n\nThis should not be swallowed.";
+  const segs = parseSegments(input);
+  assert(segs.some(s => s.content.includes('should not be swallowed')), 'Trailing prose must still be reachable');
+});
+
+// === Test Group 6 ===
+log('\n=== Test Group 6: Inline code ===');
+test('inline code backticks are protected', () => {
+  const input = "Use the `fetchData()` function with `retries: 3` option.";
+  const segs = parseSegments(input);
+  const inlineCodes = segs.filter(s => s.type === 'inline_code');
+  assert(inlineCodes.length === 2, `Expected 2 inline_code, got ${inlineCodes.length}`);
+  assert(inlineCodes.some(s => s.content === '`fetchData()`'), 'Should find fetchData inline code');
+  assert(inlineCodes.some(s => s.content === '`retries: 3`'), 'Should find retries: 3 inline code');
+  const numbers = segs.filter(s => s.type === 'number');
+  const bad3 = numbers.find(n => n.content === '3');
+  assert(!bad3, '"3" inside inline code should not be extracted');
+});
+
+// === Summary ===
+log('\n' + '='.repeat(50));
+log(`Results: ${passed} passed, ${failed} failed out of ${passed + failed} tests`);
+if (failed > 0) {
+  log('SOME TESTS FAILED');
+  document.title = 'TESTS FAILED: ' + failed;
+} else {
+  log('ALL TESTS PASSED');
+  document.title = 'ALL TESTS PASSED';
+}
+</script>
+</body>
+</html>

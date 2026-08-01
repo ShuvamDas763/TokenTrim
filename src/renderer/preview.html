@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="command-center">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TrimToken Preview</title>
+  <link rel="stylesheet" href="preview.css">
+</head>
+<body>
+  <!-- Fire Particle Background -->
+  <canvas id="fireCanvas"></canvas>
+
+  <div class="card">
+    <div class="header">
+      <div class="title">
+        <span class="icon">◆</span> Tier 1 Compression
+      </div>
+      <div class="meta" id="metaText">Processing...</div>
+    </div>
+    
+    <div class="content">
+      <div class="diff-container" id="diffContainer">
+        <!-- JS will populate the diff here -->
+      </div>
+    </div>
+    
+    <div class="actions">
+      <button class="btn btn-danger" id="revertBtn">✗ Revert</button>
+      <button class="btn btn-success" id="acceptBtn">✓ Accept</button>
+    </div>
+    
+    <div class="progress-bar">
+      <div class="progress-fill" id="progressFill"></div>
+    </div>
+  </div>
+
+  <script src="particles.js"></script>
+  <script src="preview.js"></script>
+</body>
+</html>

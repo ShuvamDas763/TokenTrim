@@ -1,0 +1,249 @@
+/* ═══════════════════════════════════════════════════════════════
+   TrimToken — Preview Card Styles
+   Glassmorphism floating card with themed particles + inline diff
+   ═══════════════════════════════════════════════════════════════ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* ── Theme 1: Command Center (default) ─────────────────────── */
+:root,
+[data-theme="command-center"] {
+  --bg: rgba(13, 15, 18, 0.8);
+  --border: rgba(77, 159, 255, 0.2);
+  --text: #e8e8e8;
+  --text-muted: #9aa0a6;
+  --accent: #4d9fff;
+  --accent-deep: #2d7fdf;
+  --accent-glow: rgba(77, 159, 255, 0.2);
+  --diff-add-bg: rgba(62, 207, 142, 0.15);
+  --diff-add-text: #66e0a6;
+  --diff-del-bg: rgba(255, 92, 92, 0.15);
+  --diff-del-text: #ff8a8a;
+  --danger: #ff5c5c;
+  --radius: 14px;
+}
+
+/* ── Theme 2: Arctic ───────────────────────────────────────── */
+[data-theme="arctic"] {
+  --bg: rgba(46, 52, 64, 0.8);
+  --border: rgba(136, 192, 208, 0.2);
+  --text: #eceff4;
+  --text-muted: #d8dee9;
+  --accent: #88c0d0;
+  --accent-deep: #5e9aaa;
+  --accent-glow: rgba(136, 192, 208, 0.2);
+  --diff-add-bg: rgba(163, 190, 140, 0.15);
+  --diff-add-text: #a3be8c;
+  --diff-del-bg: rgba(191, 97, 106, 0.15);
+  --diff-del-text: #d08770;
+  --danger: #bf616a;
+}
+
+/* ── Theme 3: Sunset ───────────────────────────────────────── */
+[data-theme="sunset"] {
+  --bg: rgba(26, 20, 16, 0.8);
+  --border: rgba(255, 157, 61, 0.2);
+  --text: #f5ece0;
+  --text-muted: #c9b8a4;
+  --accent: #ff9d3d;
+  --accent-deep: #e07820;
+  --accent-glow: rgba(255, 157, 61, 0.2);
+  --diff-add-bg: rgba(143, 191, 111, 0.15);
+  --diff-add-text: #8fbf6f;
+  --diff-del-bg: rgba(255, 107, 92, 0.15);
+  --diff-del-text: #ff8a7e;
+  --danger: #ff6b5c;
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  color: var(--text);
+  background: transparent;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* ── Fire Particle Canvas ──────────────────────────────────── */
+#fireCanvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.card {
+  position: relative;
+  z-index: 1;
+  background: var(--bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  box-shadow: 
+    0 8px 32px rgba(0, 0, 0, 0.4),
+    0 0 40px var(--accent-glow),
+    inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  overflow: hidden;
+}
+
+/* ── Header ────────────────────────────────────────────────── */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 11px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(0, 0, 0, 0.2);
+  -webkit-app-region: drag;
+}
+
+.title {
+  font-weight: 600;
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.icon {
+  font-size: 14px;
+  animation: ember-flicker 2s ease-in-out infinite;
+}
+
+@keyframes ember-flicker {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.15); }
+}
+
+.meta {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* ── Content (Diff) ────────────────────────────────────────── */
+.content {
+  flex: 1;
+  padding: 14px 16px;
+  overflow-y: auto;
+  -webkit-app-region: no-drag;
+}
+
+.diff-container {
+  font-family: 'Inter', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.diff-container del {
+  background: var(--diff-del-bg);
+  color: var(--diff-del-text);
+  text-decoration: line-through;
+  border-radius: 3px;
+  padding: 0 3px;
+}
+
+.diff-container ins {
+  background: var(--diff-add-bg);
+  color: var(--diff-add-text);
+  text-decoration: none;
+  border-radius: 3px;
+  padding: 0 3px;
+}
+
+/* ── Actions ───────────────────────────────────────────────── */
+.actions {
+  display: flex;
+  gap: 8px;
+  padding: 11px 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(0, 0, 0, 0.15);
+  -webkit-app-region: no-drag;
+}
+
+.btn {
+  flex: 1;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 7px 0;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-danger {
+  background: rgba(224, 85, 85, 0.08);
+  color: var(--danger);
+  border: 1px solid rgba(224, 85, 85, 0.25);
+}
+
+.btn-danger:hover {
+  background: rgba(224, 85, 85, 0.18);
+  border-color: rgba(224, 85, 85, 0.4);
+  transform: translateY(-1px);
+}
+
+.btn-success {
+  background: linear-gradient(135deg, var(--accent), var(--accent-deep));
+  color: white;
+  border: 1px solid transparent;
+  box-shadow: 0 2px 8px var(--accent-glow);
+}
+
+.btn-success:hover {
+  box-shadow: 0 4px 16px var(--accent-glow);
+  transform: translateY(-1px);
+}
+
+.btn-success:active, .btn-danger:active {
+  transform: translateY(0);
+}
+
+/* ── Progress Bar (Auto-dismiss) ───────────────────────────── */
+.progress-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  background: transparent;
+}
+
+.progress-fill {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(90deg, var(--accent-deep), var(--accent), var(--accent-glow));
+  transform-origin: left;
+  animation: shrink 30s linear forwards;
+  box-shadow: 0 0 8px var(--accent-glow);
+}
+
+@keyframes shrink {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+
+/* ── Scrollbar ─────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--accent-glow); }

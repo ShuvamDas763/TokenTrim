@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="command-center">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TrimToken — Settings</title>
+  <link rel="stylesheet" href="settings.css">
+</head>
+<body>
+  <!-- Fire Particle Background -->
+  <canvas id="fireCanvas"></canvas>
+
+  <div class="app">
+    <!-- Title Bar -->
+    <header class="title-bar">
+      <div class="title-bar-left">
+        <span class="title-icon">◆</span>
+        <h1>TrimToken</h1>
+      </div>
+      <button class="close-btn" id="closeBtn" title="Close">✕</button>
+    </header>
+
+    <!-- Tab Navigation -->
+    <nav class="tabs">
+      <button class="tab active" data-tab="general">General</button>
+      <button class="tab" data-tab="providers">Providers</button>
+      <button class="tab" data-tab="advanced">Advanced</button>
+      <button class="tab" data-tab="phraselog">Phrase Log</button>
+    </nav>
+
+    <!-- General Tab -->
+    <section class="tab-content active" id="tab-general">
+      <div class="setting-group">
+        <h2>Theme</h2>
+        <div class="theme-selector" id="themeSelector">
+          <label class="theme-card active" data-theme-value="command-center">
+            <input type="radio" name="theme" value="command-center" checked>
+            <div class="theme-swatch">
+              <div class="theme-swatch-segment" style="background: #0d0f12;"></div>
+              <div class="theme-swatch-segment" style="background: #16191d;"></div>
+              <div class="theme-swatch-segment" style="background: #4d9fff;"></div>
+            </div>
+            <span class="theme-card-label">Command Center</span>
+            <span class="theme-card-sub">Electric blue</span>
+          </label>
+          <label class="theme-card" data-theme-value="arctic">
+            <input type="radio" name="theme" value="arctic">
+            <div class="theme-swatch">
+              <div class="theme-swatch-segment" style="background: #2e3440;"></div>
+              <div class="theme-swatch-segment" style="background: #3b4252;"></div>
+              <div class="theme-swatch-segment" style="background: #88c0d0;"></div>
+            </div>
+            <span class="theme-card-label">Arctic</span>
+            <span class="theme-card-sub">Nord frost</span>
+          </label>
+          <label class="theme-card" data-theme-value="sunset">
+            <input type="radio" name="theme" value="sunset">
+            <div class="theme-swatch">
+              <div class="theme-swatch-segment" style="background: #1a1410;"></div>
+              <div class="theme-swatch-segment" style="background: #241c16;"></div>
+              <div class="theme-swatch-segment" style="background: #ff9d3d;"></div>
+            </div>
+            <span class="theme-card-label">Sunset</span>
+            <span class="theme-card-sub">Warm amber</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="setting-group">
+        <h2>Hotkeys</h2>
+        <div class="setting-row">
+          <label for="hotkey">Compress Hotkey</label>
+          <input type="text" id="hotkey" class="hotkey-input" readonly placeholder="Click to record...">
+        </div>
+        <div class="setting-row">
+          <label for="undoHotkey">Undo Hotkey</label>
+          <input type="text" id="undoHotkey" class="hotkey-input" readonly placeholder="Click to record...">
+        </div>
+      </div>
+
+      <div class="setting-group">
+        <h2>Preview Behavior</h2>
+        <div class="setting-row">
+          <label for="tier0Preview">Show preview for local compression (Tier 0)</label>
+          <label class="toggle">
+            <input type="checkbox" id="tier0Preview">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <div class="setting-row">
+          <label for="tier1Preview">Show preview for AI compression (Tier 1)</label>
+          <label class="toggle">
+            <input type="checkbox" id="tier1Preview">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <p class="setting-hint">Tier 0 applies silently by default. Tier 1 shows a preview since it rewrites semantically.</p>
+      </div>
+    </section>
+
+    <!-- Providers Tab -->
+    <section class="tab-content" id="tab-providers">
+      <div class="setting-group">
+        <h2>API Provider Chain</h2>
+        <p class="setting-hint">Providers are tried in order. Daily-renewing providers go first, one-time pools last. Keys are stored locally in <code>~/.trimtoken/config.json</code>.</p>
+        <div id="providerList" class="provider-list"></div>
+      </div>
+
+      <div class="setting-group">
+        <button class="btn btn-secondary" id="clearNimBtn">Reset NVIDIA NIM Exhaustion Flag</button>
+        <p class="setting-hint">If NIM was marked as permanently exhausted but you've added a fresh key, click to re-enable it.</p>
+      </div>
+    </section>
+
+    <!-- Advanced Tab -->
+    <section class="tab-content" id="tab-advanced">
+      <div class="setting-group">
+        <h2>Compression Tuning</h2>
+        <div class="setting-row">
+          <label for="aggressiveness">Aggressiveness</label>
+          <div class="slider-row">
+            <input type="range" id="aggressiveness" min="1" max="5" step="1" value="2">
+            <span id="aggressivenessValue" class="slider-value">2</span>
+          </div>
+        </div>
+        <p class="setting-hint">
+          1 = Only the safest removals. 5 = Aggressive stripping. Default is 2 (conservative).
+        </p>
+      </div>
+
+      <div class="setting-group">
+        <h2>Token Threshold</h2>
+        <div class="setting-row">
+          <label for="tokenThreshold">SHORT/LONG boundary (tokens)</label>
+          <input type="number" id="tokenThreshold" min="50" max="1000" step="10" value="150">
+        </div>
+        <p class="setting-hint">
+          Messages under this estimated token count use Tier 0 only (no API calls). Higher = more messages stay local.
+        </p>
+      </div>
+    </section>
+
+    <!-- Phrase Log Tab -->
+    <section class="tab-content" id="tab-phraselog">
+      <div class="setting-group">
+        <div class="phraselog-header">
+          <h2>Learned Phrase Confidence</h2>
+          <button class="btn btn-danger" id="resetLogBtn">Reset All</button>
+        </div>
+        <p class="setting-hint">
+          Tracks which filler removals you've accepted or reverted. Phrases with high revert rates are auto-excluded.
+        </p>
+        <div class="table-container">
+          <table id="phraseLogTable">
+            <thead>
+              <tr>
+                <th>Phrase</th>
+                <th>Applied</th>
+                <th>Reverted</th>
+                <th>Confidence</th>
+                <th>Excluded</th>
+              </tr>
+            </thead>
+            <tbody id="phraseLogBody">
+              <tr class="empty-row">
+                <td colspan="5">No phrases tracked yet. Use TrimToken to start building history.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Status Bar -->
+    <footer class="status-bar">
+      <span id="statusText">Settings loaded</span>
+      <button class="btn btn-primary" id="saveBtn">Save</button>
+    </footer>
+  </div>
+
+  <script src="particles.js"></script>
+  <script src="settings.js"></script>
+</body>
+</html>

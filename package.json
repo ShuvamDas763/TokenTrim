@@ -1,0 +1,37 @@
+{
+  "name": "trimtoken",
+  "version": "1.0.0",
+  "description": "Desktop overlay app that compresses text to reduce LLM API quota burn",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "test": "node tests/run-tests.js",
+    "build": "electron-builder"
+  },
+  "author": "TrimToken",
+  "license": "MIT",
+  "dependencies": {
+    "electron-store": "^8.2.0",
+    "openai": "^4.73.0"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.trimtoken.app",
+    "productName": "TrimToken",
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*"
+    ]
+  },
+  "allowScripts": {
+    "electron@33.4.11": true
+  }
+}
