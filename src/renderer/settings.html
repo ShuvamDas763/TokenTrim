@@ -115,24 +115,64 @@
     <!-- Advanced Tab -->
     <section class="tab-content" id="tab-advanced">
       <div class="setting-group">
-        <h2>Compression Tuning</h2>
-        <div class="setting-row">
-          <label for="aggressiveness">Aggressiveness</label>
-          <div class="slider-row">
-            <input type="range" id="aggressiveness" min="1" max="5" step="1" value="2">
-            <span id="aggressivenessValue" class="slider-value">2</span>
-          </div>
+        <h2>Compression Preset</h2>
+        <div class="preset-buttons">
+          <button class="preset-btn preset-safe" data-preset="safe">
+            🟢 Safe
+            <small>Keeps code & quotes</small>
+          </button>
+          <button class="preset-btn preset-balanced active" data-preset="balanced">
+            🟡 Balanced
+            <small>Moderate compression</small>
+          </button>
+          <button class="preset-btn preset-aggressive" data-preset="aggressive">
+            🔴 Aggressive
+            <small>Maximum compression</small>
+          </button>
         </div>
-        <p class="setting-hint">
-          1 = Only the safest removals. 5 = Aggressive stripping. Default is 2 (conservative).
-        </p>
+        <style>
+          .preset-buttons {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            margin-top: 12px;
+          }
+
+          .preset-btn {
+            padding: 12px;
+            border: 2px solid #444;
+            border-radius: 6px;
+            background: #1a1a2e;
+            color: #eee;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: center;
+          }
+
+          .preset-btn:hover {
+            border-color: #666;
+            background: #16213e;
+          }
+
+          .preset-btn.active {
+            border-color: #4caf50;
+            background: rgba(76, 175, 80, 0.1);
+          }
+
+          .preset-btn small {
+            display: block;
+            font-size: 11px;
+            color: #888;
+            margin-top: 4px;
+          }
+        </style>
       </div>
 
       <div class="setting-group">
         <h2>Token Threshold</h2>
         <div class="setting-row">
           <label for="tokenThreshold">SHORT/LONG boundary (tokens)</label>
-          <input type="number" id="tokenThreshold" min="50" max="1000" step="10" value="150">
+          <input type="number" id="tokenThreshold" min="50" max="1000" step="10" value="250">
         </div>
         <p class="setting-hint">
           Messages under this estimated token count use Tier 0 only (no API calls). Higher = more messages stay local.

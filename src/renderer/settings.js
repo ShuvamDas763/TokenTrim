@@ -6,6 +6,7 @@
 
 // ── Theme switching ────────────────────────────────────────────
 let currentTheme = 'command-center';
+let currentPreset = 'balanced';
 
 function applyTheme(theme) {
   currentTheme = theme;
@@ -59,9 +60,13 @@ async function loadSettings() {
     document.getElementById('undoHotkey').value = settings.undoHotkey || 'Ctrl+Shift+Z';
     document.getElementById('tier0Preview').checked = settings.tier0Preview || false;
     document.getElementById('tier1Preview').checked = settings.tier1Preview !== false;
-    document.getElementById('aggressiveness').value = settings.aggressiveness || 2;
-    document.getElementById('aggressivenessValue').textContent = settings.aggressiveness || 2;
-    document.getElementById('tokenThreshold').value = settings.tokenThreshold || 150;
+    
+    currentPreset = settings.compressionPreset || 'balanced';
+    document.querySelectorAll('.preset-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.preset === currentPreset);
+    });
+
+    document.getElementById('tokenThreshold').value = settings.tokenThreshold || 250;
 
     // Apply persisted theme
     applyTheme(settings.theme || 'command-center');
@@ -80,7 +85,7 @@ async function saveSettings() {
       undoHotkey: document.getElementById('undoHotkey').value,
       tier0Preview: document.getElementById('tier0Preview').checked,
       tier1Preview: document.getElementById('tier1Preview').checked,
-      aggressiveness: parseInt(document.getElementById('aggressiveness').value),
+      compressionPreset: currentPreset,
       tokenThreshold: parseInt(document.getElementById('tokenThreshold').value),
       theme: currentTheme,
     };
@@ -140,9 +145,13 @@ document.addEventListener('click', (e) => {
   }
 });
 
-// ── Aggressiveness slider ──────────────────────────────────────
-document.getElementById('aggressiveness').addEventListener('input', (e) => {
-  document.getElementById('aggressivenessValue').textContent = e.target.value;
+// ── Preset buttons ───────────────────────────────────────────────
+document.querySelectorAll('.preset-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    currentPreset = btn.dataset.preset;
+    document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  });
 });
 
 // ── Providers ──────────────────────────────────────────────────

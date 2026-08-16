@@ -69,6 +69,7 @@ const FILLERS = [
   { pattern: 'could you just', replacement: 'could you', confidence: 0.8, category: 'preamble' },
   { pattern: 'maybe we could just', replacement: 'could we', confidence: 0.8, category: 'preamble' },
   { pattern: 'maybe we could', replacement: 'could we', confidence: 0.7, category: 'preamble' },
+  { pattern: 'hey can you help me with', replacement: '', confidence: 0.8, category: 'preamble' },
 
   // ── Wordy Connectors / Substitutions ─────────────────────────────
   { pattern: 'in order to', replacement: 'to', confidence: 0.95, category: 'connector' },
@@ -131,6 +132,7 @@ const FILLERS = [
   { pattern: 'there might possibly be', replacement: 'there might be', confidence: 0.8, category: 'redundancy' },
   { pattern: 'the way i want it to', replacement: 'properly', confidence: 0.7, category: 'redundancy' },
   { pattern: 'working the way i want it to', replacement: 'working', confidence: 0.8, category: 'redundancy' },
+  { pattern: 'but dont make it too complicated', replacement: '', confidence: 0.7, category: 'redundancy' },
 
 
   // ── Filler Words (only safe-to-remove uses as standalone fillers) ─
@@ -153,6 +155,8 @@ const FILLERS = [
   { pattern: 'real quick', replacement: '', confidence: 0.8, category: 'filler' },
   { pattern: 'something real quick', replacement: '', confidence: 0.8, category: 'filler' },
   { pattern: 'just kind of', replacement: '', confidence: 0.8, category: 'filler' },
+  { pattern: 'i feel like', replacement: '', confidence: 0.7, category: 'filler' },
+  { pattern: 'maybe', replacement: '', confidence: 0.6, category: 'filler' },
 
   // ── Polite Padding ───────────────────────────────────────────────
   { pattern: 'when you get a chance', replacement: '', confidence: 0.75, category: 'polite' },

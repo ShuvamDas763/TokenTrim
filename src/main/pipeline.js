@@ -7,6 +7,8 @@ const tier1 = require('./tier1/llm-compressor');
 const providerChain = require('./tier1/provider-chain');
 const phraseLog = require('./learning/phrase-log');
 const { getSetting } = require('./config');
+const notificationManager = require('./notification-manager');
+const presets = require('./compression-presets');
 
 /**
  * Pipeline Orchestrator
@@ -39,7 +41,7 @@ class Pipeline extends EventEmitter {
    * Classify text as SHORT or LONG based on estimated token count.
    */
   async _classify(text) {
-    const threshold = await getSetting('tokenThreshold') || 150;
+    const threshold = await getSetting('tokenThreshold') || 250;
     const tokens = this._estimateTokens(text);
     return {
       type: tokens <= threshold ? 'SHORT' : 'LONG',
@@ -64,6 +66,8 @@ class Pipeline extends EventEmitter {
    * }>}
    */
   async process(inputText) {
+    const startTime = Date.now();
+    
     if (!inputText || inputText.trim().length === 0) {
       return {
         result: inputText,
@@ -91,9 +95,10 @@ class Pipeline extends EventEmitter {
     // 3. Run Tier 0
     this.emit('state', 'tier0');
 
-    const aggressiveness = await getSetting('aggressiveness') || 2;
+    const presetName = await getSetting('compressionPreset') || 'balanced';
+    const preset = presets.getPreset(presetName);
     const excludedPhrases = phraseLog.getExcludedSet();
-    const tier0Result = tier0.compress(inputText, aggressiveness, excludedPhrases);
+    const tier0Result = tier0.compress(inputText, preset.aggressiveness, excludedPhrases);
 
     this._lastRemovals = tier0Result.removals;
 
@@ -113,6 +118,8 @@ class Pipeline extends EventEmitter {
         removals: tier0Result.removals,
         originalText: inputText,
         tier0Result: tier0Result.result,
+        originalTokens: classification.estimatedTokens,
+        compressedTokens: this._estimateTokens(tier0Result.result),
       };
 
       sessionCache.set(inputText, output);
@@ -122,6 +129,14 @@ class Pipeline extends EventEmitter {
         const phrases = tier0Result.removals.map(r => r.phrase);
         phraseLog.recordBatchApply(phrases);
       }
+
+      notificationManager.notifyCompressionSuccess({
+        originalTokens: classification.estimatedTokens,
+        compressedTokens: this._estimateTokens(tier0Result.result),
+        tier: 'tier0',
+        provider: 'local',
+        durationMs: Date.now() - startTime
+      });
 
       this.emit('state', 'idle');
       return output;
@@ -141,6 +156,8 @@ class Pipeline extends EventEmitter {
         originalText: inputText,
         tier0Result: tier0Result.result,
         allExhausted: true,
+        originalTokens: classification.estimatedTokens,
+        compressedTokens: this._estimateTokens(tier0Result.result),
       };
 
       sessionCache.set(inputText, output);
@@ -150,6 +167,7 @@ class Pipeline extends EventEmitter {
     // Call Tier 1 on the Tier 0 output
     this.emit('state', 'tier1');
     console.log('[pipeline] Escalating to Tier 1');
+    notificationManager.notifyTier1Start({ provider: 'API' });
 
     const tier1Result = await tier1.compress(tier0Result.result);
 
@@ -166,10 +184,20 @@ class Pipeline extends EventEmitter {
         tier0Result: tier0Result.result,
         provider: tier1Result.provider,
         tokensUsed: tier1Result.tokensUsed,
+        originalTokens: classification.estimatedTokens,
+        compressedTokens: this._estimateTokens(tier1Result.result),
       };
 
       sessionCache.set(inputText, output);
       this.emit('state', 'idle');
+      
+      notificationManager.notifyTier1Complete({
+        provider: tier1Result.provider,
+        durationMs: Date.now() - startTime,
+        originalTokens: classification.estimatedTokens,
+        compressedTokens: this._estimateTokens(tier1Result.result)
+      });
+
       return output;
 
     } else {
@@ -192,6 +220,8 @@ class Pipeline extends EventEmitter {
         originalText: inputText,
         tier0Result: tier0Result.result,
         allExhausted: tier1Result.allExhausted,
+        originalTokens: classification.estimatedTokens,
+        compressedTokens: this._estimateTokens(tier0Result.result),
       };
 
       sessionCache.set(inputText, output);

@@ -2,6 +2,9 @@
 
 const { clipboard } = require('electron');
 const { execSync } = require('child_process');
+const previewModal = require("./preview-modal");
+const clipboardWithFallback = require("./clipboard-with-fallback");
+const notificationManager = require("./notification-manager");
 
 /**
  * Clipboard bridge for reading selected text and pasting compressed results.
@@ -16,6 +19,8 @@ const { execSync } = require('child_process');
 
 let _originalClipboard = '';
 let _lastOriginalText = '';  // for undo
+let _targetWindowHandle = null;  // captured at hotkey time for focus verification
+let _targetWindowTitle = null;   // captured for tab-level focus verification
 
 /**
  * Small delay helper.
@@ -50,6 +55,12 @@ async function readSelection() {
   // If they are still holding Alt when we simulate Ctrl+C, Windows sees "Ctrl+Alt+C" 
   // and the copy fails, resulting in "No text selected".
   await sleep(400);
+
+  // Capture the currently focused window BEFORE we do anything.
+  // This is the window the user intends to paste back into.
+  _targetWindowHandle = clipboardWithFallback.getForegroundWindow();
+  _targetWindowTitle = clipboardWithFallback.getActiveWindowTitle();
+  console.log(`[clipboard-bridge] Captured target window handle: ${_targetWindowHandle}, title: ${_targetWindowTitle}`);
 
   // Save what's currently on the clipboard
   _originalClipboard = clipboard.readText() || '';
@@ -123,9 +134,55 @@ function getLastOriginalText() {
   return _lastOriginalText;
 }
 
+/**
+ * Handle the preview logic and pasting with fallback.
+ */
+async function handleCompressionAndPaste(originalText, compressedText, metadata) {
+  try {
+    let textToPaste = compressedText;
+
+    if (metadata.needsPreview) {
+      const userChoice = await previewModal.showPreview({
+        originalText,
+        compressedText,
+        originalTokens: metadata.originalTokens || 0,
+        compressedTokens: metadata.compressedTokens || 0,
+        tier: metadata.tier,
+        provider: metadata.provider,
+      });
+
+      if (userChoice === "reject") {
+        notificationManager.show("Paste cancelled", "info");
+        return 'rejected';
+      }
+
+      textToPaste = userChoice === "original" ? originalText : compressedText;
+    }
+
+    // Paste with fallback, passing the captured target window handle and title
+    const result = await clipboardWithFallback.pasteWithFallback(textToPaste, metadata, _targetWindowHandle, _targetWindowTitle);
+
+    if (!result.success) {
+      notificationManager.notifyPasteFailure({
+        reason: result.reason || 'timeout',
+        compressedText: textToPaste,
+        error: result.error,
+      });
+      return 'failed';
+    }
+    
+    return textToPaste === compressedText ? 'accepted' : 'reverted';
+  } catch (error) {
+    console.error("[clipboard-bridge] Error:", error);
+    notificationManager.show(`Error: ${error.message}`, "error");
+    return 'error';
+  }
+}
+
 module.exports = {
   readSelection,
   writeAndPaste,
   undoLastCompression,
   getLastOriginalText,
+  handleCompressionAndPaste,
 };

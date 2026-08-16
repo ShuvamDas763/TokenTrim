@@ -1,5 +1,20 @@
 'use strict';
 
+if (process.stdout && typeof process.stdout.setEncoding === 'function') {
+  process.stdout.setEncoding('utf8');
+}
+if (process.stderr && typeof process.stderr.setEncoding === 'function') {
+  process.stderr.setEncoding('utf8');
+}
+
+if (process.platform === 'win32') {
+  try {
+    require('child_process').execSync('chcp 65001', { stdio: 'ignore' });
+  } catch (e) {
+    // non-fatal, just best-effort
+  }
+}
+
 const { app, BrowserWindow, ipcMain, Notification, screen } = require('electron');
 const path = require('path');
 const config = require('./config');
@@ -22,8 +37,15 @@ if (!gotTheLock) {
 }
 
 let settingsWindow = null;
-let previewWindow = null;
 let isProcessing = false;
+
+// Set UTF-8 encoding for console logs if supported
+if (process.stdout && typeof process.stdout.setEncoding === 'function') {
+  process.stdout.setEncoding('utf8');
+}
+if (process.stderr && typeof process.stderr.setEncoding === 'function') {
+  process.stderr.setEncoding('utf8');
+}
 
 /**
  * Show a system notification.
@@ -56,14 +78,33 @@ async function onCompressHotkey() {
     const result = await pipeline.process(text);
 
     // 3. Handle preview vs direct paste
-    if (result.needsPreview) {
-      console.log('[main] Needs preview, opening window');
-      openPreviewWindow(result);
+    if (result.changed || result.needsPreview) {
+      const decision = await clipboardBridge.handleCompressionAndPaste(
+        result.originalText,
+        result.result,
+        {
+          needsPreview: result.needsPreview,
+          originalTokens: result.originalTokens,
+          compressedTokens: result.compressedTokens,
+          tier: 'tier' + result.tier,
+          provider: result.provider
+        }
+      );
+      if (decision === 'accepted') pipeline.acceptLast();
+      else if (decision === 'reverted') pipeline.revertLast();
     } else {
-      console.log('[main] No preview needed, applying directly');
-      if (result.changed) {
-        await clipboardBridge.writeAndPaste(result.result, result.originalText);
-      }
+      console.log('[main] No changes from compression, pasting original text directly');
+      await clipboardBridge.handleCompressionAndPaste(
+        result.originalText,
+        result.result,
+        {
+          needsPreview: false,
+          originalTokens: result.originalTokens,
+          compressedTokens: result.compressedTokens,
+          tier: 'tier' + result.tier,
+          provider: result.provider
+        }
+      );
     }
 
     // 4. Handle notifications for edge cases
@@ -132,88 +173,7 @@ function openSettingsWindow(tab = 'general') {
   });
 }
 
-/**
- * Open the Tier 1 preview card.
- */
-async function openPreviewWindow(result) {
-  if (previewWindow) {
-    previewWindow.close();
-  }
-
-  // Get mouse position to spawn near cursor
-  const point = screen.getCursorScreenPoint();
-  const display = screen.getDisplayNearestPoint(point);
-  
-  // Calculate position: slightly below and right of cursor, but constrained to screen
-  const width = 450;
-  const height = 250;
-  let x = point.x + 20;
-  let y = point.y + 20;
-  
-  // Keep on screen
-  if (x + width > display.bounds.x + display.bounds.width) x = point.x - width - 20;
-  if (y + height > display.bounds.y + display.bounds.height) y = point.y - height - 20;
-
-  previewWindow = new BrowserWindow({
-    width,
-    height,
-    x,
-    y,
-    frame: false,
-    transparent: true,
-    alwaysOnTop: true,
-    resizable: false,
-    skipTaskbar: true,
-    show: false,
-    webPreferences: {
-      preload: path.join(__dirname, '../renderer/preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-    },
-  });
-
-  previewWindow.loadFile(path.join(__dirname, '../renderer/preview.html'));
-
-  const currentTheme = await config.getSetting('theme') || 'command-center';
-
-  previewWindow.once('ready-to-show', () => {
-    previewWindow.showInactive(); // Show without stealing focus entirely if possible
-    previewWindow.webContents.send('preview-data', {
-      original: result.originalText,
-      compressed: result.result,
-      tokensUsed: result.tokensUsed || 0,
-      provider: result.provider || 'local',
-      tier: result.tier,
-      theme: currentTheme,
-    });
-  });
-
-  // Handle Accept/Revert from preview window
-  ipcMain.once('preview-decision', async (event, decision) => {
-    if (!previewWindow) return;
-    
-    // 1. Close window FIRST so the original app regains focus before we paste
-    previewWindow.close();
-    previewWindow = null;
-    
-    // 2. Wait a moment for OS focus to physically shift back to the browser/editor
-    await new Promise(resolve => setTimeout(resolve, 150));
-    
-    if (decision === 'accept') {
-      console.log('[main] Preview accepted');
-      await clipboardBridge.writeAndPaste(result.result, result.originalText);
-      pipeline.acceptLast();
-    } else {
-      console.log('[main] Preview reverted');
-      pipeline.revertLast();
-    }
-  });
-
-  previewWindow.on('closed', () => {
-    previewWindow = null;
-    ipcMain.removeAllListeners('preview-decision');
-  });
-}
+// preview modal logic has moved to preview-modal.js
 
 /**
  * App initialization.

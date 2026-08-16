@@ -18,10 +18,10 @@ const LEGACY_PROVIDER_CONFIG_PATH = path.join(LEGACY_CONFIG_DIR, 'config.json');
 const DEFAULTS = {
   hotkey: 'Ctrl+Shift+C',
   undoHotkey: 'Ctrl+Shift+Z',
-  aggressiveness: 3,         // 1-5, default conservative -> now default 3
+  compressionPreset: 'balanced', // 'safe' | 'balanced' | 'aggressive'
   tier0Preview: false,        // silent apply
   tier1Preview: true,         // show preview
-  tokenThreshold: 150,        // SHORT/LONG boundary
+  tokenThreshold: 250,        // SHORT/LONG boundary
   theme: 'command-center',    // 'command-center' | 'arctic' | 'sunset'
 };
 
@@ -64,13 +64,42 @@ async function initStore() {
     schema: {
       hotkey: { type: 'string' },
       undoHotkey: { type: 'string' },
-      aggressiveness: { type: 'number', minimum: 1, maximum: 5 },
+      compressionPreset: { type: 'string', enum: ['safe', 'balanced', 'aggressive'] },
       tier0Preview: { type: 'boolean' },
       tier1Preview: { type: 'boolean' },
       tokenThreshold: { type: 'number', minimum: 50, maximum: 1000 },
       theme: { type: 'string', enum: ['command-center', 'arctic', 'sunset'] },
     }
   });
+
+  // ── Migrations ──────────────────────────────────────────────────
+  // If the persisted tokenThreshold is still the old default (150),
+  // bump it to the new default (250). Users who manually set a custom
+  // value (anything other than 150) are left untouched.
+  if (storeInstance.get('tokenThreshold') === 150) {
+    console.log('[config] Migrating tokenThreshold 150 → 250');
+    storeInstance.set('tokenThreshold', 250);
+  }
+
+  // Same migration for aggressiveness: old default was 2, new is 3
+  if (storeInstance.get('aggressiveness') === 2) {
+    console.log('[config] Migrating aggressiveness 2 → 3');
+    storeInstance.set('aggressiveness', 3);
+  }
+
+  // MIGRATION: Old format used aggressiveness number
+  if (storeInstance.has('aggressiveness') && !storeInstance.has('compressionPreset')) {
+    const { migrateFromLegacy } = require('./compression-presets');
+    const agg = storeInstance.get('aggressiveness');
+    console.log('[config] Migrating from aggressiveness to compressionPreset');
+    storeInstance.set('compressionPreset', migrateFromLegacy(agg));
+    storeInstance.delete('aggressiveness');
+  }
+
+  // VALIDATION: Ensure compressionPreset is valid
+  if (!storeInstance.has('compressionPreset')) {
+    storeInstance.set('compressionPreset', 'balanced');
+  }
 
   return storeInstance;
 }
