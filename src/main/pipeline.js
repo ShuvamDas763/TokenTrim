@@ -9,6 +9,8 @@ const phraseLog = require('./learning/phrase-log');
 const { getSetting } = require('./config');
 const notificationManager = require('./notification-manager');
 const presets = require('./compression-presets');
+const { checkAndShowDisclosure } = require('./privacy/disclosure');
+const { checkSecretWarning } = require('./privacy/secret-detector');
 
 /**
  * Pipeline Orchestrator
@@ -80,10 +82,12 @@ class Pipeline extends EventEmitter {
       };
     }
 
+    const presetName = await getSetting('compressionPreset') || 'balanced';
+
     // 1. Check session cache
-    const cached = sessionCache.get(inputText);
+    const cached = sessionCache.get(inputText, presetName);
     if (cached) {
-      console.log('[pipeline] Cache hit');
+      console.log(`[pipeline] Cache hit (preset: ${presetName})`);
       this.emit('state', 'idle');
       return cached;
     }
@@ -95,10 +99,9 @@ class Pipeline extends EventEmitter {
     // 3. Run Tier 0
     this.emit('state', 'tier0');
 
-    const presetName = await getSetting('compressionPreset') || 'balanced';
     const preset = presets.getPreset(presetName);
     const excludedPhrases = phraseLog.getExcludedSet();
-    const tier0Result = tier0.compress(inputText, preset.aggressiveness, excludedPhrases);
+    const tier0Result = tier0.compress(inputText, preset.aggressiveness, excludedPhrases, preset.removeHedging);
 
     this._lastRemovals = tier0Result.removals;
 
@@ -122,7 +125,7 @@ class Pipeline extends EventEmitter {
         compressedTokens: this._estimateTokens(tier0Result.result),
       };
 
-      sessionCache.set(inputText, output);
+      sessionCache.set(inputText, presetName, output);
 
       // Record applies (Tier 0 is silent by default, so these count as accepted)
       if (!tier0Preview && tier0Result.removals.length > 0) {
@@ -160,16 +163,25 @@ class Pipeline extends EventEmitter {
         compressedTokens: this._estimateTokens(tier0Result.result),
       };
 
-      sessionCache.set(inputText, output);
+      sessionCache.set(inputText, presetName, output);
       return output;
     }
 
-    // Call Tier 1 on the Tier 0 output
-    this.emit('state', 'tier1');
-    console.log('[pipeline] Escalating to Tier 1');
-    notificationManager.notifyTier1Start({ provider: 'API' });
+    // --- Privacy Checks ---
+    let tier1Result;
+    if (!(await checkAndShowDisclosure())) {
+      console.log('[pipeline] Tier 1 aborted by disclosure dialog');
+      tier1Result = { success: false, userAborted: true, allExhausted: false };
+    } else if (!(await checkSecretWarning(inputText))) {
+      console.log('[pipeline] Tier 1 aborted by secret warning');
+      tier1Result = { success: false, userAborted: true, allExhausted: false };
+    } else {
+      this.emit('state', 'tier1');
+      console.log('[pipeline] Escalating to Tier 1');
+      notificationManager.notifyTier1Start({ provider: 'API' });
 
-    const tier1Result = await tier1.compress(tier0Result.result);
+      tier1Result = await tier1.compress(tier0Result.result);
+    }
 
     if (tier1Result.success) {
       console.log(`[pipeline] Tier 1 success: ${tier0Result.result.length} → ${tier1Result.result.length} chars via ${tier1Result.provider}`);
@@ -188,7 +200,7 @@ class Pipeline extends EventEmitter {
         compressedTokens: this._estimateTokens(tier1Result.result),
       };
 
-      sessionCache.set(inputText, output);
+      sessionCache.set(inputText, presetName, output);
       this.emit('state', 'idle');
       
       notificationManager.notifyTier1Complete({
@@ -201,33 +213,47 @@ class Pipeline extends EventEmitter {
       return output;
 
     } else {
-      // Tier 1 failed — fall back to Tier 0 result
-      console.log('[pipeline] Tier 1 failed, falling back to Tier 0');
+      // Tier 1 failed or was aborted — fall back to Tier 0 result
+      if (!tier1Result.userAborted) {
+        console.warn('[pipeline] Tier 1 FAILED — all providers exhausted, falling back to Tier 0 result');
+      }
 
       if (tier1Result.allExhausted) {
         this.emit('state', 'exhausted');
         this.emit('allExhausted');
+        notificationManager.show(
+          '⚠️ AI compression unavailable (all providers failed). Sent with basic compression only.',
+          'warning'
+        );
+      } else if (tier1Result.userAborted) {
+        this.emit('state', 'idle');
       } else {
         this.emit('state', 'error');
       }
 
       const output = {
         result: tier0Result.result,
-        tier: 0,
+        success: false,
+        tier: 'tier0_fallback',
+        failureReason: tier1Result.userAborted ? 'user_aborted' : (tier1Result.allExhausted ? 'all_providers_exhausted' : 'tier1_error'),
         changed: tier0Result.changed,
         needsPreview: tier0Preview && tier0Result.changed,
         removals: tier0Result.removals,
         originalText: inputText,
         tier0Result: tier0Result.result,
-        allExhausted: tier1Result.allExhausted,
+        allExhausted: tier1Result.allExhausted || false,
         originalTokens: classification.estimatedTokens,
         compressedTokens: this._estimateTokens(tier0Result.result),
       };
 
-      sessionCache.set(inputText, output);
-
-      // Delayed reset to idle
-      setTimeout(() => this.emit('state', 'idle'), 5000);
+      if (!tier1Result.userAborted) {
+        // DO NOT cache failed Tier 1 attempts so they can be retried later
+        console.log('[pipeline] Not caching — Tier 1 failed, want to retry next time');
+        // Delayed reset to idle
+        setTimeout(() => this.emit('state', 'idle'), 5000);
+      } else {
+        console.log('[pipeline] Not caching — aborted by user');
+      }
 
       return output;
     }

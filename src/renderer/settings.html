@@ -7,6 +7,13 @@
   <link rel="stylesheet" href="settings.css">
 </head>
 <body>
+  <div class="bg-container">
+    <video class="bg-video" autoplay muted loop playsinline>
+      <source src="./assets/video/samurai-bg.webm" type="video/webm">
+      <source src="./assets/video/samurai-bg.mp4" type="video/mp4">
+    </video>
+    <div class="bg-scrim"></div>
+  </div>
   <!-- Fire Particle Background -->
   <canvas id="fireCanvas"></canvas>
 
@@ -64,6 +71,14 @@
             <span class="theme-card-sub">Warm amber</span>
           </label>
         </div>
+
+        <div class="setting-row" style="margin-top: 16px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 16px;">
+          <label for="showBackgroundVideo">Show background video</label>
+          <label class="toggle">
+            <input type="checkbox" id="showBackgroundVideo">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
       </div>
 
       <div class="setting-group">
@@ -94,7 +109,7 @@
             <span class="toggle-slider"></span>
           </label>
         </div>
-        <p class="setting-hint">Tier 0 applies silently by default. Tier 1 shows a preview since it rewrites semantically.</p>
+        <p class="setting-hint text-safe-bg">Tier 0 applies silently by default. Tier 1 shows a preview since it rewrites semantically.</p>
       </div>
     </section>
 
@@ -102,13 +117,13 @@
     <section class="tab-content" id="tab-providers">
       <div class="setting-group">
         <h2>API Provider Chain</h2>
-        <p class="setting-hint">Providers are tried in order. Daily-renewing providers go first, one-time pools last. Keys are stored locally in <code>~/.trimtoken/config.json</code>.</p>
+        <p class="setting-hint text-safe-bg">Providers are tried in order. Daily-renewing providers go first, one-time pools last. Keys are stored locally in <code>~/.trimtoken/config.json</code>.</p>
         <div id="providerList" class="provider-list"></div>
       </div>
 
       <div class="setting-group">
         <button class="btn btn-secondary" id="clearNimBtn">Reset NVIDIA NIM Exhaustion Flag</button>
-        <p class="setting-hint">If NIM was marked as permanently exhausted but you've added a fresh key, click to re-enable it.</p>
+        <p class="setting-hint text-safe-bg">If NIM was marked as permanently exhausted but you've added a fresh key, click to re-enable it.</p>
       </div>
     </section>
 
@@ -155,8 +170,8 @@
           }
 
           .preset-btn.active {
-            border-color: #4caf50;
-            background: rgba(76, 175, 80, 0.1);
+            border-color: var(--accent);
+            background: var(--accent-glow);
           }
 
           .preset-btn small {
@@ -174,7 +189,7 @@
           <label for="tokenThreshold">SHORT/LONG boundary (tokens)</label>
           <input type="number" id="tokenThreshold" min="50" max="1000" step="10" value="250">
         </div>
-        <p class="setting-hint">
+        <p class="setting-hint text-safe-bg">
           Messages under this estimated token count use Tier 0 only (no API calls). Higher = more messages stay local.
         </p>
       </div>
@@ -187,7 +202,7 @@
           <h2>Learned Phrase Confidence</h2>
           <button class="btn btn-danger" id="resetLogBtn">Reset All</button>
         </div>
-        <p class="setting-hint">
+        <p class="setting-hint text-safe-bg">
           Tracks which filler removals you've accepted or reverted. Phrases with high revert rates are auto-excluded.
         </p>
         <div class="table-container">
@@ -218,7 +233,7 @@
     </footer>
   </div>
 
-  <script src="particles.js"></script>
-  <script src="settings.js"></script>
+    <script src="particles.js"></script>
+    <script src="settings.js"></script>
 </body>
 </html>

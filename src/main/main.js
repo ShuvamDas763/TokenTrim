@@ -235,6 +235,12 @@ ipcMain.handle('save-settings', async (event, settings) => {
   if (settings.theme) {
     trayMgr.setTheme(settings.theme);
   }
+
+  if (settings.showBackgroundVideo !== undefined) {
+    BrowserWindow.getAllWindows().forEach(w => {
+      w.webContents.send('video-toggled', settings.showBackgroundVideo);
+    });
+  }
 });
 
 ipcMain.handle('get-provider-states', () => providerChain.getAllStates());
@@ -257,4 +263,8 @@ ipcMain.on('theme-changed', async (event, theme) => {
   // Update tray icon colors instantly
   trayMgr.setTheme(theme);
   console.log(`[main] Theme changed to: ${theme}`);
+});
+
+app.on('open-settings', (tab) => {
+  openSettingsWindow(tab);
 });

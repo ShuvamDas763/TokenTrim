@@ -8,16 +8,45 @@
 let currentTheme = 'command-center';
 let currentPreset = 'balanced';
 
+function setVideoState(show) {
+  document.body.classList.toggle('background-video-enabled', show);
+
+  const bgContainer = document.querySelector('.bg-container');
+  if (bgContainer) {
+    bgContainer.style.display = show ? 'block' : 'none';
+  }
+
+  const video = document.querySelector('.bg-video');
+  if (video) {
+    if (show) {
+      video.style.display = 'block';
+      video.play().catch(() => {});
+    } else {
+      video.pause();
+      video.style.display = 'none';
+    }
+  }
+
+  const fireCanvas = document.getElementById('fireCanvas');
+  if (fireCanvas) {
+    fireCanvas.style.display = show ? 'block' : 'none';
+  }
+}
+
+if (window.trimtoken.onVideoToggled) {
+  window.trimtoken.onVideoToggled((show) => {
+    setVideoState(show);
+  });
+}
+
 function applyTheme(theme) {
   currentTheme = theme;
   document.documentElement.setAttribute('data-theme', theme);
 
-  // Update theme card selection UI
   document.querySelectorAll('.theme-card').forEach(card => {
     card.classList.toggle('active', card.dataset.themeValue === theme);
   });
 
-  // Update the radio button state
   const radio = document.querySelector(`input[name="theme"][value="${theme}"]`);
   if (radio) radio.checked = true;
 }
@@ -26,7 +55,6 @@ document.querySelectorAll('.theme-card').forEach(card => {
   card.addEventListener('click', () => {
     const theme = card.dataset.themeValue;
     applyTheme(theme);
-    // Notify main process for tray icon color update
     if (window.trimtoken.notifyThemeChanged) {
       window.trimtoken.notifyThemeChanged(theme);
     }
@@ -36,16 +64,13 @@ document.querySelectorAll('.theme-card').forEach(card => {
 // ── Tab switching ──────────────────────────────────────────────
 document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => {
-    // Deactivate all tabs and content
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
 
-    // Activate clicked tab
     tab.classList.add('active');
     const tabId = `tab-${tab.dataset.tab}`;
     document.getElementById(tabId).classList.add('active');
 
-    // Load tab-specific data
     if (tab.dataset.tab === 'providers') loadProviders();
     if (tab.dataset.tab === 'phraselog') loadPhraseLog();
   });
@@ -60,6 +85,9 @@ async function loadSettings() {
     document.getElementById('undoHotkey').value = settings.undoHotkey || 'Ctrl+Shift+Z';
     document.getElementById('tier0Preview').checked = settings.tier0Preview || false;
     document.getElementById('tier1Preview').checked = settings.tier1Preview !== false;
+    const showVideo = settings.showBackgroundVideo !== false;
+    document.getElementById('showBackgroundVideo').checked = showVideo;
+    setVideoState(showVideo);
     
     currentPreset = settings.compressionPreset || 'balanced';
     document.querySelectorAll('.preset-btn').forEach(btn => {
@@ -68,7 +96,6 @@ async function loadSettings() {
 
     document.getElementById('tokenThreshold').value = settings.tokenThreshold || 250;
 
-    // Apply persisted theme
     applyTheme(settings.theme || 'command-center');
 
     setStatus('Settings loaded');
@@ -85,8 +112,9 @@ async function saveSettings() {
       undoHotkey: document.getElementById('undoHotkey').value,
       tier0Preview: document.getElementById('tier0Preview').checked,
       tier1Preview: document.getElementById('tier1Preview').checked,
+      showBackgroundVideo: document.getElementById('showBackgroundVideo').checked,
       compressionPreset: currentPreset,
-      tokenThreshold: parseInt(document.getElementById('tokenThreshold').value),
+      tokenThreshold: parseInt(document.getElementById('tokenThreshold').value) || 250,
       theme: currentTheme,
     };
 
@@ -125,7 +153,6 @@ document.addEventListener('keydown', (e) => {
   if (e.shiftKey) parts.push('Shift');
   if (e.altKey) parts.push('Alt');
 
-  // Ignore modifier-only keypresses
   if (['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) return;
 
   const keyName = e.key.length === 1 ? e.key.toUpperCase() : e.key;
@@ -136,13 +163,16 @@ document.addEventListener('keydown', (e) => {
   recordingInput = null;
 });
 
-// Click elsewhere to cancel recording
 document.addEventListener('click', (e) => {
   if (recordingInput && !e.target.classList.contains('hotkey-input')) {
     recordingInput.classList.remove('recording');
     recordingInput.value = recordingInput.dataset.original || recordingInput.value;
     recordingInput = null;
   }
+});
+
+document.getElementById('showBackgroundVideo').addEventListener('change', async () => {
+  await saveSettings();
 });
 
 // ── Preset buttons ───────────────────────────────────────────────
@@ -193,7 +223,6 @@ async function loadProviders() {
       container.appendChild(card);
     });
 
-    // Toggle key visibility
     container.querySelectorAll('.key-toggle').forEach(btn => {
       btn.addEventListener('click', () => {
         const input = document.getElementById(btn.dataset.target);
@@ -205,7 +234,7 @@ async function loadProviders() {
   }
 }
 
-// Save provider keys
+// ── Save provider keys ─────────────────────────────────────────
 async function saveProviderKeys() {
   const inputs = document.querySelectorAll('.provider-key-row input');
   const updates = [];
@@ -240,7 +269,6 @@ async function loadPhraseLog() {
       return;
     }
 
-    // Sort by total uses descending
     phrases.sort((a, b) => (b[1].applied + b[1].reverted) - (a[1].applied + a[1].reverted));
 
     tbody.innerHTML = '';
@@ -270,7 +298,6 @@ async function loadPhraseLog() {
       tbody.appendChild(row);
     }
 
-    // Exclusion toggle handlers
     tbody.querySelectorAll('.exclude-toggle').forEach(checkbox => {
       checkbox.addEventListener('change', async () => {
         await window.trimtoken.togglePhraseExclusion(checkbox.dataset.phrase, checkbox.checked);
@@ -313,7 +340,6 @@ document.getElementById('closeBtn').addEventListener('click', () => {
 function setStatus(msg) {
   const el = document.getElementById('statusText');
   el.textContent = msg;
-  // Auto-clear after 4 seconds
   setTimeout(() => {
     if (el.textContent === msg) el.textContent = '';
   }, 4000);
@@ -321,3 +347,15 @@ function setStatus(msg) {
 
 // ── Init ───────────────────────────────────────────────────────
 loadSettings();
+
+// ── Video Background Performance ───────────────────────────────
+document.addEventListener('visibilitychange', () => {
+  const video = document.querySelector('.bg-video');
+  if (video) {
+    if (document.hidden) {
+      video.pause();
+    } else {
+      video.play().catch(() => {});
+    }
+  }
+});

@@ -10,21 +10,56 @@
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       background: transparent;
       color: #eee;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-      padding: 20px;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      -webkit-app-region: no-drag;
     }
 
     .preview-modal {
-      background: #16213e;
-      border-radius: 8px;
-      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
-      width: 100%;
-      max-width: 900px;
-      animation: slideIn 0.3s ease-out;
-      border: 1px solid #444;
+      background: rgba(10, 12, 20, 0.15);
+      backdrop-filter: blur(2px) saturate(1.1);
+      -webkit-backdrop-filter: blur(2px) saturate(1.1);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 12px;
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.3),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+        0 8px 24px rgba(0, 0, 0, 0.4);
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .drag-bar {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 72px;
+      -webkit-app-region: drag;
+      z-index: 10;
+    }
+
+    .preview-modal::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(115deg, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0.05) 25%, transparent 50%);
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    .preview-modal > * {
+      position: relative;
+      z-index: 2;
+    }
+
+    .preview-modal, .preview-modal label, .preview-modal span, .preview-modal h2, .preview-modal h3, .preview-modal p {
+      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
     }
 
     @keyframes slideIn {
@@ -35,13 +70,61 @@
     .preview-header {
       padding: 24px;
       border-bottom: 1px solid #444;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      user-select: none;
     }
 
-    .preview-header h2 {
+    .preview-split, .preview-actions, .preview-header button, .stat-container {
+      -webkit-app-region: no-drag;
+    }
+
+    .preview-header-left h2 {
       font-size: 20px;
-      margin-bottom: 8px;
+      margin-bottom: 4px;
     }
 
+    .stat-container {
+      position: relative;
+      z-index: 11; /* Above the drag bar so it can be clicked if needed */
+      -webkit-app-region: no-drag;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: rgba(0, 0, 0, 0.2);
+      padding: 6px 12px 6px 6px;
+      border-radius: 40px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .progress-ring {
+      display: block;
+    }
+
+    .progress-ring__circle {
+      transition: stroke-dashoffset 0.5s ease;
+      transform: rotate(-90deg);
+      transform-origin: 50% 50%;
+    }
+
+    .stat-text {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    #statTokens {
+      font-size: 13px;
+      font-weight: 600;
+      color: #eee;
+    }
+
+    #statProvider {
+      font-size: 11px;
+      color: #aaa;
+    }
+    
     .preview-stat {
       font-size: 13px;
       color: #aaa;
@@ -64,7 +147,7 @@
       padding: 20px;
       border-right: 1px solid #444;
       overflow-y: auto;
-      max-height: 400px;
+      max-height: 60vh;
     }
 
     .preview-column:last-child {
@@ -151,13 +234,71 @@
       transform: translateY(-1px);
       box-shadow: 0 4px 12px rgba(244, 67, 54, 0.3);
     }
+
+    /* ── Video Background ──────────────────────────────────────── */
+    .bg-container {
+      position: fixed;
+      inset: 0;
+      z-index: -2;
+      overflow: hidden;
+    }
+
+    .bg-video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .bg-scrim {
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+      transition: background 0.3s ease;
+      background: rgba(13, 15, 18, 0.22); /* default command-center since modal might not have data-theme */
+    }
+
+    html[data-theme="command-center"] body { background: #0d0f12; }
+    html[data-theme="arctic"] body { background: #2e3440; }
+    html[data-theme="sunset"] body { background: #1a1410; }
+
+    [data-theme="command-center"] .bg-scrim { background: rgba(13, 15, 18, 0.28); }
+    [data-theme="arctic"] .bg-scrim { background: rgba(46, 52, 64, 0.36); }
+    [data-theme="sunset"] .bg-scrim { background: rgba(26, 20, 16, 0.22); }
+
+    .overlay-text {
+      color: #ffffff;
+      text-shadow:
+        0 1px 4px rgba(0, 0, 0, 0.85),
+        0 0 16px rgba(0, 0, 0, 0.5);
+    }
   </style>
 </head>
 <body>
+  <div class="bg-container">
+    <video class="bg-video" autoplay muted loop playsinline>
+      <source src="./assets/video/samurai-bg.webm" type="video/webm">
+      <source src="./assets/video/samurai-bg.mp4" type="video/mp4">
+    </video>
+    <div class="bg-scrim"></div>
+  </div>
   <div class="preview-modal" id="modalRoot">
+    <div class="drag-bar"></div>
     <div class="preview-header">
-      <h2>Review Before Pasting</h2>
-      <p class="preview-stat" id="statText">Loading...</p>
+      <div class="preview-header-left">
+        <h2>Review Before Pasting</h2>
+      </div>
+      <div class="stat-container" id="statContainer" style="display: none;">
+        <svg class="progress-ring" width="40" height="40">
+          <circle stroke="rgba(255,255,255,0.1)" stroke-width="3" fill="transparent" r="16" cx="20" cy="20"/>
+          <circle class="progress-ring__circle" id="progressRing" stroke="#4caf50" stroke-width="3" fill="transparent" r="16" cx="20" cy="20" stroke-dasharray="100.53" stroke-dashoffset="100.53" stroke-linecap="round"/>
+          <text x="20" y="24" font-size="11" font-weight="bold" text-anchor="middle" fill="#fff" id="percentText">0%</text>
+        </svg>
+        <div class="stat-text">
+          <div id="statTokens">241 → 227 tokens</div>
+          <div id="statProvider">Local compression</div>
+        </div>
+      </div>
+      <p class="preview-stat" id="statTextOld" style="display: none;">Loading...</p>
     </div>
 
     <div class="preview-split">
@@ -175,12 +316,14 @@
     </div>
 
     <div class="preview-actions">
+      <div id="autoAcceptTimer" style="margin-right: auto; color: #888; align-self: center; font-size: 13px;">Auto-accepting in 30s...</div>
       <button class="btn btn-approve" id="btnApprove">Paste Compressed</button>
       <button class="btn btn-secondary" id="btnOriginal">Paste Original</button>
       <button class="btn btn-reject" id="btnReject">Cancel</button>
     </div>
   </div>
 
+  <script src="../../node_modules/diff/dist/diff.js"></script>
   <script src="preview-modal.js"></script>
 </body>
 </html>

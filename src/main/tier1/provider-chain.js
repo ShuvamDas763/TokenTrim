@@ -38,6 +38,7 @@ class ProviderChain {
         coolingDownUntil: 0,
         consecutiveTimeouts: 0,
         creditExhausted: isNimExhausted,
+        misconfigured: false,
       };
     }
 
@@ -85,14 +86,17 @@ class ProviderChain {
   /**
    * Get the next available provider.
    * Skips providers that are cooling down, exhausted, or have no API key.
+   * @param {string[]} [excludeNames=[]] - Array of provider names to skip for this request
    * @returns {object|null} Provider config object, or null if all exhausted
    */
-  getNextAvailable() {
+  getNextAvailable(excludeNames = []) {
     if (!this._loaded) this.load();
 
     const now = Date.now();
 
     for (const provider of this._providers) {
+      if (excludeNames.includes(provider.name)) continue;
+
       const state = this._state[provider.name];
 
       // Skip if no API key
@@ -100,6 +104,9 @@ class ProviderChain {
 
       // Skip if credit-exhausted (permanent for non-renewable)
       if (state.creditExhausted) continue;
+
+      // Skip if misconfigured (requires config update)
+      if (state.misconfigured) continue;
 
       // Skip if cooling down
       if (state.coolingDownUntil > now) continue;
@@ -165,6 +172,18 @@ class ProviderChain {
     } else {
       console.log(`[provider-chain] ${name} credit exhausted (session only — renewable)`);
     }
+  }
+
+  /**
+   * Mark a provider as misconfigured (e.g. invalid model).
+   * Remains unavailable until config is reloaded.
+   * @param {string} name 
+   */
+  markMisconfigured(name) {
+    if (!this._state[name]) return;
+    this._state[name].available = false;
+    this._state[name].misconfigured = true;
+    console.log(`[provider-chain] ${name} marked as misconfigured (requires config update)`);
   }
 
   /**

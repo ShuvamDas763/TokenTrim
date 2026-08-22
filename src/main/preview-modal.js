@@ -47,10 +47,14 @@ class PreviewModal {
         height,
         x,
         y,
+        minWidth: 400,
+        minHeight: 300,
+        maxWidth: 1200,
+        maxHeight: 900,
         frame: false,
         transparent: true,
         alwaysOnTop: true,
-        resizable: false,
+        resizable: true,
         skipTaskbar: true,
         show: false,
         webPreferences: {
@@ -62,9 +66,15 @@ class PreviewModal {
 
       this.previewWindow.loadFile(path.join(__dirname, '../renderer/preview-modal.html'));
 
-      this.previewWindow.once('ready-to-show', () => {
+      this.previewWindow.once('ready-to-show', async () => {
         this.previewWindow.showInactive(); 
-        this.previewWindow.webContents.send('preview-data', configData);
+        const settings = await config.getAllSettings();
+        const fullConfigData = {
+          ...configData,
+          theme: settings.theme || 'command-center',
+          showBackgroundVideo: settings.showBackgroundVideo !== false
+        };
+        this.previewWindow.webContents.send('preview-data', fullConfigData);
       });
 
       const handleDecision = async (event, decision) => {

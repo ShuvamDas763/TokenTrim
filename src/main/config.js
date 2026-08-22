@@ -3,6 +3,7 @@
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const sessionCache = require('./session-cache');
 
 // We use a dynamic import for electron-store (ESM module)
 let Store;
@@ -23,6 +24,8 @@ const DEFAULTS = {
   tier1Preview: true,         // show preview
   tokenThreshold: 250,        // SHORT/LONG boundary
   theme: 'command-center',    // 'command-center' | 'arctic' | 'sunset'
+  showBackgroundVideo: true,  // show video background
+  hasSeenTier1Disclosure: false, // one-time privacy disclosure
 };
 
 const DEFAULT_PROVIDER_CONFIG = {
@@ -30,14 +33,14 @@ const DEFAULT_PROVIDER_CONFIG = {
     {
       name: 'groq',
       baseUrl: 'https://api.groq.com/openai/v1',
-      model: 'llama-3.3-70b-versatile',
+      model: 'openai/gpt-oss-120b',
       apiKey: '',
       renewable: true
     },
     {
       name: 'cerebras',
       baseUrl: 'https://api.cerebras.ai/v1',
-      model: 'llama-3.3-70b',
+      model: 'gpt-oss-120b',
       apiKey: '',
       renewable: true
     },
@@ -69,6 +72,8 @@ async function initStore() {
       tier1Preview: { type: 'boolean' },
       tokenThreshold: { type: 'number', minimum: 50, maximum: 1000 },
       theme: { type: 'string', enum: ['command-center', 'arctic', 'sunset'] },
+      showBackgroundVideo: { type: 'boolean' },
+      hasSeenTier1Disclosure: { type: 'boolean' },
     }
   });
 
@@ -126,6 +131,8 @@ async function getAllSettings() {
 async function setSetting(key, value) {
   const store = await initStore();
   store.set(key, value);
+  sessionCache.clear();
+  console.log('[settings] Config saved, compression cache cleared');
 }
 
 /**
@@ -136,6 +143,8 @@ async function setSettings(obj) {
   for (const [key, value] of Object.entries(obj)) {
     store.set(key, value);
   }
+  sessionCache.clear();
+  console.log('[settings] Config saved, compression cache cleared');
 }
 
 /**
@@ -172,6 +181,14 @@ function loadProviderConfig() {
   try {
     const raw = fs.readFileSync(PROVIDER_CONFIG_PATH, 'utf-8');
     const config = JSON.parse(raw);
+    
+    console.log(`[config] Loaded provider config from: ${PROVIDER_CONFIG_PATH}`);
+    if (config.providers && Array.isArray(config.providers)) {
+      config.providers.forEach(p => {
+        console.log(`[config]   ${p.name}: model="${p.model}"`);
+      });
+    }
+
     if (!config.providers || !Array.isArray(config.providers)) {
       console.warn('[config] Invalid provider config, using defaults');
       return DEFAULT_PROVIDER_CONFIG;

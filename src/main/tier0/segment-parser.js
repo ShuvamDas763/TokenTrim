@@ -21,6 +21,7 @@ const SEGMENT_TYPES = {
   QUOTED: 'quoted',
   URL: 'url',
   NUMBER: 'number',
+  ALPHANUMERIC_TOKEN: 'alphanumeric_token',
   EDITABLE: 'editable',
 };
 
@@ -30,6 +31,7 @@ const PROTECTED_TYPES = new Set([
   SEGMENT_TYPES.QUOTED,
   SEGMENT_TYPES.URL,
   SEGMENT_TYPES.NUMBER,
+  SEGMENT_TYPES.ALPHANUMERIC_TOKEN,
 ]);
 
 /**
@@ -61,6 +63,12 @@ const PATTERNS = [
   {
     type: SEGMENT_TYPES.QUOTED,
     regex: /(?<![a-zA-Z])'(?:[^'\\]|\\.){2,}'(?![a-zA-Z])/g,
+  },
+  // Mixed alphanumeric tokens (API keys, hashes, versions). Protects the WHOLE token 
+  // so the NUMBER regex below doesn't fragment the digits within it.
+  {
+    type: SEGMENT_TYPES.ALPHANUMERIC_TOKEN,
+    regex: /\b(?=\w*[a-zA-Z])(?=\w*\d)[a-zA-Z0-9_\-]{8,}\b/g,
   },
   // Numbers: integers, decimals, dates, phone numbers, versions, times
   // Must be bounded by word boundaries or punctuation to avoid matching inside words

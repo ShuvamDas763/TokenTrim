@@ -127,3 +127,15 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') sendDecision('accept');
   if (e.key === 'Escape') sendDecision('revert');
 });
+
+// ── Video Background Performance ───────────────────────────────
+document.addEventListener('visibilitychange', () => {
+  const video = document.querySelector('.bg-video');
+  if (video) {
+    if (document.hidden) {
+      video.pause();
+    } else {
+      video.play().catch(() => {});
+    }
+  }
+});

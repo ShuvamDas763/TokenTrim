@@ -34,4 +34,9 @@ contextBridge.exposeInMainWorld('trimtoken', {
 
   // ── Window Control ────────────────────────────────────────────
   closeWindow: () => ipcRenderer.send('close-settings'),
+
+  // ── Global Settings Sync ──────────────────────────────────────
+  onVideoToggled: (callback) => {
+    ipcRenderer.on('video-toggled', (_event, show) => callback(show));
+  },
 });

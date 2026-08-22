@@ -18,22 +18,13 @@
  */
 
 const NEVER_TOUCH = new Set([
-  'i think',
-  'i believe',
   'might',
-  'possibly',
-  'perhaps',
-  'arguably',
   'likely',
   'unlikely',
-  'probably',
   'may',
   'could',
   'should',
   'would',
-  'in my opinion',
-  'in my experience',
-  'as far as i know',
 ]);
 
 /**
@@ -155,8 +146,19 @@ const FILLERS = [
   { pattern: 'real quick', replacement: '', confidence: 0.8, category: 'filler' },
   { pattern: 'something real quick', replacement: '', confidence: 0.8, category: 'filler' },
   { pattern: 'just kind of', replacement: '', confidence: 0.8, category: 'filler' },
-  { pattern: 'i feel like', replacement: '', confidence: 0.7, category: 'filler' },
-  { pattern: 'maybe', replacement: '', confidence: 0.6, category: 'filler' },
+
+  // ── Hedging ──────────────────────────────────────────────────────
+  { pattern: 'in my opinion', replacement: '', confidence: 0.9, category: 'hedging' },
+  { pattern: 'in my experience', replacement: '', confidence: 0.9, category: 'hedging' },
+  { pattern: 'as far as i know', replacement: '', confidence: 0.9, category: 'hedging' },
+  { pattern: 'i think', replacement: '', confidence: 0.8, category: 'hedging' },
+  { pattern: 'i believe', replacement: '', confidence: 0.8, category: 'hedging' },
+  { pattern: 'i feel like', replacement: '', confidence: 0.7, category: 'hedging' },
+  { pattern: 'possibly', replacement: '', confidence: 0.8, category: 'hedging' },
+  { pattern: 'perhaps', replacement: '', confidence: 0.8, category: 'hedging' },
+  { pattern: 'arguably', replacement: '', confidence: 0.8, category: 'hedging' },
+  { pattern: 'probably', replacement: '', confidence: 0.8, category: 'hedging' },
+  { pattern: 'maybe', replacement: '', confidence: 0.6, category: 'hedging' },
 
   // ── Polite Padding ───────────────────────────────────────────────
   { pattern: 'when you get a chance', replacement: '', confidence: 0.75, category: 'polite' },
@@ -226,11 +228,16 @@ function getConfidenceThreshold(aggressiveness) {
 /**
  * Get fillers that meet the confidence threshold.
  * @param {number} aggressiveness - 1-5
+ * @param {boolean} removeHedging - if false, skips 'hedging' category
  * @returns {Array} Filtered filler entries
  */
-function getActiveFillers(aggressiveness) {
+function getActiveFillers(aggressiveness, removeHedging = true) {
   const threshold = getConfidenceThreshold(aggressiveness);
-  return FILLERS.filter(f => f.confidence >= threshold);
+  return FILLERS.filter(f => {
+    if (f.confidence < threshold) return false;
+    if (!removeHedging && f.category === 'hedging') return false;
+    return true;
+  });
 }
 
 /**

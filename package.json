@@ -12,6 +12,7 @@
   "author": "TrimToken",
   "license": "MIT",
   "dependencies": {
+    "diff": "^5.2.0",
     "electron-store": "^8.2.0",
     "openai": "^4.73.0"
   },

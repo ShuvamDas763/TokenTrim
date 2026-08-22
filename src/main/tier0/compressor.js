@@ -261,9 +261,10 @@ function collapseRepeatedPhrases(text) {
  * @param {string} text - Input text
  * @param {number} aggressiveness - 1-5, default 2
  * @param {Set} [excludedPhrases] - Phrases excluded by the learning system
+ * @param {boolean} [removeHedging] - Whether to remove hedging phrases
  * @returns {{ result: string, removals: Array, changed: boolean, originalLength: number, compressedLength: number }}
  */
-function compress(text, aggressiveness = 3, excludedPhrases = new Set()) {
+function compress(text, aggressiveness = 3, excludedPhrases = new Set(), removeHedging = true) {
   if (!text || text.trim().length === 0) {
     return {
       result: text,
@@ -281,7 +282,7 @@ function compress(text, aggressiveness = 3, excludedPhrases = new Set()) {
   const segments = parseSegments(text);
 
   // 2. Get active fillers for this aggressiveness level
-  const fillers = getActiveFillers(aggressiveness);
+  const fillers = getActiveFillers(aggressiveness, removeHedging);
 
   // 3. Process each segment
   const processedSegments = segments.map(segment => {
