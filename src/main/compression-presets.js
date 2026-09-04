@@ -10,35 +10,58 @@ const PRESETS = {
   safe: {
     name: "Safe",
     icon: "🟢",
-    description: "Keeps code, quotes, hedging language. Removes only obvious fluff.",
+    description: "Fillers only. 1 pass. Very conservative.",
     aggressiveness: 2,
     confidenceThreshold: 0.6,
     protectCodeBlocks: true,
     protectQuotes: true,
     protectUrls: true,
-    removeHedging: false,  // keeps "I think", "maybe", etc.
+    removeHedging: false,
+    maxPasses: 1,
+    enableLocalTier1: false,
+    dropThreshold: 0,
   },
   balanced: {
     name: "Balanced",
     icon: "🟡",
-    description: "Moderate compression. Removes some redundancy + light hedging.",
+    description: "Fillers + Boilerplate + Synonyms. 2 passes.",
     aggressiveness: 3,
     confidenceThreshold: 0.4,
     protectCodeBlocks: true,
     protectQuotes: true,
     protectUrls: true,
-    removeHedging: true,   // removes "I think", "maybe", "feels like"
+    removeHedging: true,
+    maxPasses: 2,
+    enableLocalTier1: true,
+    dropThreshold: 0.15, // Drop bottom 15% of sentences
   },
   aggressive: {
     name: "Aggressive",
     icon: "🔴",
-    description: "Maximum compression. Restructures sentences, may fall back to Tier 1.",
+    description: "All local optimizations. 3 passes. Max compression.",
     aggressiveness: 4,
     confidenceThreshold: 0.3,
     protectCodeBlocks: true,
     protectQuotes: true,
     protectUrls: true,
     removeHedging: true,
+    maxPasses: 3,
+    enableLocalTier1: true,
+    dropThreshold: 0.25, // Drop bottom 25% of sentences
+  },
+  max: {
+    name: "Max (Cloud)",
+    icon: "🔥",
+    description: "Aggressive + Cloud fallback if target missed.",
+    aggressiveness: 5,
+    confidenceThreshold: 0.2,
+    protectCodeBlocks: true,
+    protectQuotes: true,
+    protectUrls: true,
+    removeHedging: true,
+    maxPasses: 3,
+    enableLocalTier1: true,
+    dropThreshold: 0.30, // Drop bottom 30% of sentences
   },
 };
 
@@ -47,7 +70,7 @@ module.exports = {
   
   /**
    * Get preset by name
-   * @param {string} presetName - "safe" | "balanced" | "aggressive"
+   * @param {string} presetName - "safe" | "balanced" | "aggressive" | "max"
    * @returns {object} Preset config object
    */
   getPreset(presetName) {

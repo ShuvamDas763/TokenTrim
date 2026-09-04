@@ -2,87 +2,47 @@
 
 const { EventEmitter } = require('events');
 const sessionCache = require('./session-cache');
-const tier0 = require('./tier0/compressor');
+const multiPass = require('./multi-pass');
+const tokenizer = require('./tier0/tokenizer');
 const tier1 = require('./tier1/llm-compressor');
 const providerChain = require('./tier1/provider-chain');
 const phraseLog = require('./learning/phrase-log');
 const { getSetting } = require('./config');
 const notificationManager = require('./notification-manager');
-const presets = require('./compression-presets');
+const sessionAnalytics = require('./session-analytics');
 const { checkAndShowDisclosure } = require('./privacy/disclosure');
 const { checkSecretWarning } = require('./privacy/secret-detector');
 
 /**
- * Pipeline Orchestrator
+ * Pipeline Orchestrator (100% Local Default)
  *
- * Central hub that ties Tier 0 and Tier 1 together:
- * 1. Check session cache
- * 2. Classify input as SHORT or LONG
- * 3. Run Tier 0
- * 4. Escalate to Tier 1 only if LONG
- * 5. Cache result
- *
- * Emits events for tray icon state updates.
+ * Central hub for TokenTrim:
+ * 1. Checks cache
+ * 2. Uses BPE tokenizer for exact measurement
+ * 3. Runs Multi-Pass Local Engine
+ * 4. Checks if target compression is met
+ * 5. Escalate to Cloud (Tier 1) ONLY if target missed AND opt-in is enabled
  */
 
 class Pipeline extends EventEmitter {
   constructor() {
     super();
-    this._lastRemovals = []; // Track last Tier 0 removals for undo/learning
-  }
-
-  /**
-   * Estimate token count. Simple heuristic: ~1.3 tokens per word.
-   */
-  _estimateTokens(text) {
-    const words = text.split(/\s+/).filter(w => w.length > 0).length;
-    return Math.ceil(words * 1.3);
-  }
-
-  /**
-   * Classify text as SHORT or LONG based on estimated token count.
-   */
-  async _classify(text) {
-    const threshold = await getSetting('tokenThreshold') || 250;
-    const tokens = this._estimateTokens(text);
-    return {
-      type: tokens <= threshold ? 'SHORT' : 'LONG',
-      estimatedTokens: tokens,
-    };
+    this._lastRemovals = []; // Track last removals for undo/learning
   }
 
   /**
    * Process text through the compression pipeline.
-   *
-   * @param {string} inputText - Raw input text
-   * @returns {Promise<{
-   *   result: string,
-   *   tier: 0|1,
-   *   changed: boolean,
-   *   needsPreview: boolean,
-   *   removals: Array,
-   *   originalText: string,
-   *   tier0Result: string,
-   *   provider?: string,
-   *   allExhausted?: boolean,
-   * }>}
    */
   async process(inputText) {
     const startTime = Date.now();
     
     if (!inputText || inputText.trim().length === 0) {
-      return {
-        result: inputText,
-        tier: 0,
-        changed: false,
-        needsPreview: false,
-        removals: [],
-        originalText: inputText,
-        tier0Result: inputText,
-      };
+      return this._createOutput(inputText, inputText, 0, false, [], 'none', 0, 0, 0);
     }
 
     const presetName = await getSetting('compressionPreset') || 'balanced';
+    const enableCloudFallback = await getSetting('enableCloudFallback');
+    const compressionTarget = await getSetting('compressionTarget') || 0.50; // default 50% target
 
     // 1. Check session cache
     const cached = sessionCache.get(inputText, presetName);
@@ -92,183 +52,139 @@ class Pipeline extends EventEmitter {
       return cached;
     }
 
-    // 2. Classify
-    const classification = await this._classify(inputText);
-    console.log(`[pipeline] Classified as ${classification.type} (~${classification.estimatedTokens} tokens)`);
+    // 2. Measure input exactly
+    const inputTokens = tokenizer.countTokens(inputText);
+    console.log(`[pipeline] Input tokens: ${inputTokens} (measured with BPE)`);
 
-    // 3. Run Tier 0
-    this.emit('state', 'tier0');
+    // Extremely short? Skip
+    if (inputTokens < 10) {
+      return this._createOutput(inputText, inputText, 0, false, [], 'none', inputTokens, inputTokens, 0);
+    }
 
-    const preset = presets.getPreset(presetName);
+    this.emit('state', 'compressing');
+
+    // 3. Multi-Pass Local Engine
     const excludedPhrases = phraseLog.getExcludedSet();
-    const tier0Result = tier0.compress(inputText, preset.aggressiveness, excludedPhrases, preset.removeHedging);
+    const localResult = multiPass.compress(inputText, presetName, excludedPhrases);
+    
+    this._lastRemovals = localResult.removals;
+    const localTokens = localResult.finalTokens;
+    const localReduction = (inputTokens - localTokens) / inputTokens;
 
-    this._lastRemovals = tier0Result.removals;
+    console.log(`[pipeline] Local Multi-Pass: ${inputTokens} → ${localTokens} tokens (-${Math.round(localReduction * 100)}%) in ${localResult.passes} passes`);
 
-    console.log(`[pipeline] Tier 0: ${inputText.length} → ${tier0Result.result.length} chars (${tier0Result.removals.length} removals)`);
+    // 4. Evaluate success and decide on cloud fallback
+    let finalResult = localResult.result;
+    let finalTokens = localTokens;
+    let usedCloud = false;
+    let providerUsed = 'local';
+    let outputTier = localResult.passes > 1 ? 'multi-pass' : 'tier0';
 
-    // 4. Decide on escalation
+    const targetMet = localReduction >= compressionTarget;
+    
+    if (!targetMet && enableCloudFallback && inputTokens > 200) {
+      // Cloud fallback branch
+      if (providerChain.hasAnyAvailable()) {
+        console.log(`[pipeline] Target missed (${Math.round(localReduction*100)}% < ${Math.round(compressionTarget*100)}%). Escalating to cloud...`);
+        
+        // Privacy Checks
+        let cloudAborted = false;
+        if (!(await checkAndShowDisclosure()) || !(await checkSecretWarning(inputText))) {
+          console.log('[pipeline] Cloud fallback aborted by privacy dialog');
+          cloudAborted = true;
+        }
+
+        if (!cloudAborted) {
+          notificationManager.notifyTier1Start({ provider: 'API' });
+          const cloudResult = await tier1.compress(finalResult); // Feed it the local result to save API tokens
+          
+          if (cloudResult.success) {
+            const cloudTokens = tokenizer.countTokens(cloudResult.result);
+            if (cloudTokens < localTokens) { // Only use cloud if it actually helped more
+              finalResult = cloudResult.result;
+              finalTokens = cloudTokens;
+              usedCloud = true;
+              providerUsed = cloudResult.provider;
+              outputTier = 'tier1_cloud';
+              console.log(`[pipeline] Cloud success: ${localTokens} → ${cloudTokens} tokens via ${providerUsed}`);
+            } else {
+              console.log(`[pipeline] Cloud didn't improve upon local. Sticking with local.`);
+            }
+          } else {
+            console.warn('[pipeline] Cloud fallback failed. Sticking with local.');
+          }
+        }
+      }
+    }
+
+    // 5. Build output and cache
+    const durationMs = Date.now() - startTime;
+    const output = this._createOutput(
+      inputText, 
+      finalResult, 
+      outputTier, 
+      finalResult !== inputText, 
+      localResult.removals, 
+      providerUsed, 
+      inputTokens, 
+      finalTokens, 
+      durationMs
+    );
+
+    sessionCache.set(inputText, presetName, output);
+    
+    // 6. Record analytics
+    sessionAnalytics.record(inputTokens, finalTokens, usedCloud);
+
+    // Record auto-applies for local if preview is off
     const tier0Preview = await getSetting('tier0Preview');
-    const tier1Preview = await getSetting('tier1Preview');
-
-    // SHORT: never escalate to Tier 1
-    if (classification.type === 'SHORT') {
-      const output = {
-        result: tier0Result.result,
-        tier: 0,
-        changed: tier0Result.changed,
-        needsPreview: tier0Preview && tier0Result.changed,
-        removals: tier0Result.removals,
-        originalText: inputText,
-        tier0Result: tier0Result.result,
-        originalTokens: classification.estimatedTokens,
-        compressedTokens: this._estimateTokens(tier0Result.result),
-      };
-
-      sessionCache.set(inputText, presetName, output);
-
-      // Record applies (Tier 0 is silent by default, so these count as accepted)
-      if (!tier0Preview && tier0Result.removals.length > 0) {
-        const phrases = tier0Result.removals.map(r => r.phrase);
-        phraseLog.recordBatchApply(phrases);
-      }
-
-      notificationManager.notifyCompressionSuccess({
-        originalTokens: classification.estimatedTokens,
-        compressedTokens: this._estimateTokens(tier0Result.result),
-        tier: 'tier0',
-        provider: 'local',
-        durationMs: Date.now() - startTime
-      });
-
-      this.emit('state', 'idle');
-      return output;
+    if (!tier0Preview && localResult.removals.length > 0 && !usedCloud) {
+      const phrases = localResult.removals.map(r => r.phrase);
+      phraseLog.recordBatchApply(phrases);
     }
 
-    // LONG: attempt Tier 1 escalation
-    if (!providerChain.hasAnyAvailable()) {
-      console.log('[pipeline] No Tier 1 providers available, using Tier 0 only');
-      this.emit('state', 'idle');
-
-      const output = {
-        result: tier0Result.result,
-        tier: 0,
-        changed: tier0Result.changed,
-        needsPreview: tier0Preview && tier0Result.changed,
-        removals: tier0Result.removals,
-        originalText: inputText,
-        tier0Result: tier0Result.result,
-        allExhausted: true,
-        originalTokens: classification.estimatedTokens,
-        compressedTokens: this._estimateTokens(tier0Result.result),
-      };
-
-      sessionCache.set(inputText, presetName, output);
-      return output;
-    }
-
-    // --- Privacy Checks ---
-    let tier1Result;
-    if (!(await checkAndShowDisclosure())) {
-      console.log('[pipeline] Tier 1 aborted by disclosure dialog');
-      tier1Result = { success: false, userAborted: true, allExhausted: false };
-    } else if (!(await checkSecretWarning(inputText))) {
-      console.log('[pipeline] Tier 1 aborted by secret warning');
-      tier1Result = { success: false, userAborted: true, allExhausted: false };
-    } else {
-      this.emit('state', 'tier1');
-      console.log('[pipeline] Escalating to Tier 1');
-      notificationManager.notifyTier1Start({ provider: 'API' });
-
-      tier1Result = await tier1.compress(tier0Result.result);
-    }
-
-    if (tier1Result.success) {
-      console.log(`[pipeline] Tier 1 success: ${tier0Result.result.length} → ${tier1Result.result.length} chars via ${tier1Result.provider}`);
-
-      const output = {
-        result: tier1Result.result,
-        tier: 1,
-        changed: true,
-        needsPreview: tier1Preview !== false, // Default true
-        removals: tier0Result.removals,
-        originalText: inputText,
-        tier0Result: tier0Result.result,
-        provider: tier1Result.provider,
-        tokensUsed: tier1Result.tokensUsed,
-        originalTokens: classification.estimatedTokens,
-        compressedTokens: this._estimateTokens(tier1Result.result),
-      };
-
-      sessionCache.set(inputText, presetName, output);
-      this.emit('state', 'idle');
-      
+    // Notify
+    if (usedCloud) {
       notificationManager.notifyTier1Complete({
-        provider: tier1Result.provider,
-        durationMs: Date.now() - startTime,
-        originalTokens: classification.estimatedTokens,
-        compressedTokens: this._estimateTokens(tier1Result.result)
+        provider: providerUsed,
+        durationMs,
+        originalTokens: inputTokens,
+        compressedTokens: finalTokens
       });
-
-      return output;
-
-    } else {
-      // Tier 1 failed or was aborted — fall back to Tier 0 result
-      if (!tier1Result.userAborted) {
-        console.warn('[pipeline] Tier 1 FAILED — all providers exhausted, falling back to Tier 0 result');
-      }
-
-      if (tier1Result.allExhausted) {
-        this.emit('state', 'exhausted');
-        this.emit('allExhausted');
-        notificationManager.show(
-          '⚠️ AI compression unavailable (all providers failed). Sent with basic compression only.',
-          'warning'
-        );
-      } else if (tier1Result.userAborted) {
-        this.emit('state', 'idle');
-      } else {
-        this.emit('state', 'error');
-      }
-
-      const output = {
-        result: tier0Result.result,
-        success: false,
-        tier: 'tier0_fallback',
-        failureReason: tier1Result.userAborted ? 'user_aborted' : (tier1Result.allExhausted ? 'all_providers_exhausted' : 'tier1_error'),
-        changed: tier0Result.changed,
-        needsPreview: tier0Preview && tier0Result.changed,
-        removals: tier0Result.removals,
-        originalText: inputText,
-        tier0Result: tier0Result.result,
-        allExhausted: tier1Result.allExhausted || false,
-        originalTokens: classification.estimatedTokens,
-        compressedTokens: this._estimateTokens(tier0Result.result),
-      };
-
-      if (!tier1Result.userAborted) {
-        // DO NOT cache failed Tier 1 attempts so they can be retried later
-        console.log('[pipeline] Not caching — Tier 1 failed, want to retry next time');
-        // Delayed reset to idle
-        setTimeout(() => this.emit('state', 'idle'), 5000);
-      } else {
-        console.log('[pipeline] Not caching — aborted by user');
-      }
-
-      return output;
+    } else if (localResult.changed) {
+      notificationManager.notifyCompressionSuccess({
+        originalTokens: inputTokens,
+        compressedTokens: finalTokens,
+        tier: 'local',
+        provider: 'local',
+        durationMs,
+        passes: localResult.passes
+      });
     }
+
+    this.emit('state', 'idle');
+    return output;
   }
 
-  /**
-   * Get the removals from the last Tier 0 pass (for undo/learning).
-   */
+  _createOutput(originalText, resultText, tier, changed, removals, provider, originalTokens, compressedTokens, durationMs) {
+    return {
+      result: resultText,
+      tier,
+      changed,
+      needsPreview: changed, // App handles specifics of whether to show preview
+      removals,
+      originalText,
+      provider,
+      originalTokens,
+      compressedTokens,
+      durationMs
+    };
+  }
+
   getLastRemovals() {
     return [...this._lastRemovals];
   }
 
-  /**
-   * Record that the user accepted the last compression.
-   */
   acceptLast() {
     if (this._lastRemovals.length > 0) {
       const phrases = this._lastRemovals.map(r => r.phrase);
@@ -276,9 +192,6 @@ class Pipeline extends EventEmitter {
     }
   }
 
-  /**
-   * Record that the user reverted the last compression.
-   */
   revertLast() {
     if (this._lastRemovals.length > 0) {
       const phrases = this._lastRemovals.map(r => r.phrase);

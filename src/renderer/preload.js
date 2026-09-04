@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('trimtoken', {
   // ── Settings ──────────────────────────────────────────────────
   getSettings: () => ipcRenderer.invoke('get-settings'),
   saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
+  getSessionStats: () => ipcRenderer.invoke('get-session-stats'),
 
   // ── Provider Config ───────────────────────────────────────────
   getProviderStates: () => ipcRenderer.invoke('get-provider-states'),

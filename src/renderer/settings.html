@@ -22,7 +22,7 @@
     <header class="title-bar">
       <div class="title-bar-left">
         <span class="title-icon">◆</span>
-        <h1>TrimToken</h1>
+        <h1>TrimToken <span class="local-badge" style="background: #2ea043; color: white; padding: 2px 6px; border-radius: 4px; font-size: 11px; margin-left: 8px; vertical-align: middle;">100% Local</span></h1>
       </div>
       <button class="close-btn" id="closeBtn" title="Close">✕</button>
     </header>
@@ -78,6 +78,28 @@
             <input type="checkbox" id="showBackgroundVideo">
             <span class="toggle-slider"></span>
           </label>
+        </div>
+      </div>
+
+      <div class="setting-group" style="background: rgba(46, 160, 67, 0.1); border: 1px solid rgba(46, 160, 67, 0.3); padding: 12px; border-radius: 6px; margin-bottom: 16px;">
+        <h2 style="color: #4ade80; margin-top: 0;">Session Stats</h2>
+        <div style="display: flex; justify-content: space-between; font-size: 13px;">
+          <div>
+            <div style="color: #aaa; font-size: 11px;">Tokens Saved</div>
+            <div id="statsTokensSaved" style="font-size: 18px; font-weight: bold; color: white;">0</div>
+          </div>
+          <div>
+            <div style="color: #aaa; font-size: 11px;">Avg. Reduction</div>
+            <div id="statsAvgReduction" style="font-size: 18px; font-weight: bold; color: white;">0%</div>
+          </div>
+          <div>
+            <div style="color: #aaa; font-size: 11px;">Best Reduction</div>
+            <div id="statsBestReduction" style="font-size: 18px; font-weight: bold; color: white;">0%</div>
+          </div>
+          <div>
+            <div style="color: #aaa; font-size: 11px;">API Calls</div>
+            <div id="statsApiCalls" style="font-size: 18px; font-weight: bold; color: white;">0</div>
+          </div>
         </div>
       </div>
 
@@ -142,13 +164,17 @@
           </button>
           <button class="preset-btn preset-aggressive" data-preset="aggressive">
             🔴 Aggressive
-            <small>Maximum compression</small>
+            <small>Max local compression</small>
+          </button>
+          <button class="preset-btn preset-max" data-preset="max">
+            🔥 Max (Cloud)
+            <small>Aggressive + Cloud API</small>
           </button>
         </div>
         <style>
           .preset-buttons {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
+            grid-template-columns: repeat(4, 1fr);
             gap: 12px;
             margin-top: 12px;
           }
@@ -184,13 +210,30 @@
       </div>
 
       <div class="setting-group">
-        <h2>Token Threshold</h2>
+        <h2>Compression Target</h2>
         <div class="setting-row">
-          <label for="tokenThreshold">SHORT/LONG boundary (tokens)</label>
-          <input type="number" id="tokenThreshold" min="50" max="1000" step="10" value="250">
+          <label for="compressionTarget">Target token reduction</label>
+          <div style="display: flex; align-items: center; gap: 10px; width: 50%;">
+            <input type="range" id="compressionTarget" min="0.1" max="0.9" step="0.1" value="0.5" style="flex: 1;">
+            <span id="compressionTargetDisplay">50%</span>
+          </div>
         </div>
         <p class="setting-hint text-safe-bg">
-          Messages under this estimated token count use Tier 0 only (no API calls). Higher = more messages stay local.
+          If local compression doesn't hit this target, it will fall back to cloud API (if enabled below).
+        </p>
+      </div>
+
+      <div class="setting-group">
+        <h2>Cloud Fallback (Advanced)</h2>
+        <div class="setting-row">
+          <label for="enableCloudFallback">Enable Cloud LLM Fallback</label>
+          <label class="toggle">
+            <input type="checkbox" id="enableCloudFallback">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <p class="setting-hint text-safe-bg">
+          If enabled, TrimToken will use your API providers when local compression misses the target.
         </p>
       </div>
     </section>

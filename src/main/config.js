@@ -19,10 +19,11 @@ const LEGACY_PROVIDER_CONFIG_PATH = path.join(LEGACY_CONFIG_DIR, 'config.json');
 const DEFAULTS = {
   hotkey: 'Ctrl+Shift+C',
   undoHotkey: 'Ctrl+Shift+Z',
-  compressionPreset: 'balanced', // 'safe' | 'balanced' | 'aggressive'
+  compressionPreset: 'balanced', // 'safe' | 'balanced' | 'aggressive' | 'max'
   tier0Preview: false,        // silent apply
-  tier1Preview: true,         // show preview
-  tokenThreshold: 250,        // SHORT/LONG boundary
+  tier1Preview: true,         // show preview (for cloud fallback)
+  enableCloudFallback: false, // 100% local by default
+  compressionTarget: 0.50,    // Target 50% token reduction
   theme: 'command-center',    // 'command-center' | 'arctic' | 'sunset'
   showBackgroundVideo: true,  // show video background
   hasSeenTier1Disclosure: false, // one-time privacy disclosure
@@ -67,10 +68,11 @@ async function initStore() {
     schema: {
       hotkey: { type: 'string' },
       undoHotkey: { type: 'string' },
-      compressionPreset: { type: 'string', enum: ['safe', 'balanced', 'aggressive'] },
+      compressionPreset: { type: 'string', enum: ['safe', 'balanced', 'aggressive', 'max'] },
       tier0Preview: { type: 'boolean' },
       tier1Preview: { type: 'boolean' },
-      tokenThreshold: { type: 'number', minimum: 50, maximum: 1000 },
+      enableCloudFallback: { type: 'boolean' },
+      compressionTarget: { type: 'number', minimum: 0.1, maximum: 0.9 },
       theme: { type: 'string', enum: ['command-center', 'arctic', 'sunset'] },
       showBackgroundVideo: { type: 'boolean' },
       hasSeenTier1Disclosure: { type: 'boolean' },

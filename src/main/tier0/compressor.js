@@ -2,6 +2,12 @@
 
 const { parseSegments, SEGMENT_TYPES } = require('./segment-parser');
 const { getActiveFillers, isNeverTouch } = require('./filler-dictionary');
+const { getActiveBoilerplate } = require('./boilerplate-dictionary');
+const { applyShortenings } = require('./synonym-shortener');
+const { deduplicate } = require('./deduplicator');
+const { compact } = require('./structural-compactor');
+const { minify } = require('./whitespace-minifier');
+const { optimizeTokens } = require('./token-optimizer');
 
 /**
  * Tier 0 Compressor
@@ -281,8 +287,9 @@ function compress(text, aggressiveness = 3, excludedPhrases = new Set(), removeH
   // 1. Parse into segments
   const segments = parseSegments(text);
 
-  // 2. Get active fillers for this aggressiveness level
+  // 2. Get active fillers, boilerplate, etc. for this aggressiveness level
   const fillers = getActiveFillers(aggressiveness, removeHedging);
+  const boilerplate = getActiveBoilerplate(aggressiveness);
 
   // 3. Process each segment
   const processedSegments = segments.map(segment => {
@@ -291,32 +298,51 @@ function compress(text, aggressiveness = 3, excludedPhrases = new Set(), removeH
       return { ...segment };
     }
 
-    // Editable: apply fillers
+    // Editable: apply fillers and boilerplate
     let processed = segment.content;
 
-    // Sort fillers by pattern length (longest first) to avoid partial matches
-    const sortedFillers = [...fillers].sort(
+    // Combine fillers and boilerplate for one pass
+    const combinedPatterns = [...fillers, ...boilerplate].sort(
       (a, b) => b.pattern.length - a.pattern.length
     );
 
-    for (const filler of sortedFillers) {
-      const { text: newText, removals } = applyFiller(processed, filler, excludedPhrases);
+    for (const pattern of combinedPatterns) {
+      const { text: newText, removals } = applyFiller(processed, pattern, excludedPhrases);
       processed = newText;
       allRemovals.push(...removals);
     }
 
-    console.log(`[Diagnostic] Segment BEFORE cleanWhitespace (len ${processed.length}): ${JSON.stringify(processed.substring(0, 60))}`);
+    // Apply synonym shortenings and contractions
+    const shortResult = applyShortenings(processed, aggressiveness, excludedPhrases);
+    processed = shortResult.text;
+    
+    // allRemovals could track synonym replacements too if desired, but for now we focus on fillers/boilerplate
+
     processed = cleanWhitespace(processed);
     processed = cleanPunctuation(processed);
     processed = collapseRepeatedPhrases(processed);
-    console.log(`[Diagnostic] Segment AFTER cleanPunctuation (len ${processed.length}): ${JSON.stringify(processed.substring(0, 60))}`);
+
+    // Apply token-level optimizer
+    const optResult = optimizeTokens(processed);
+    processed = optResult.text;
 
     return { ...segment, content: processed };
   });
 
   // 4. Reassemble
   let result = reassembleSegments(processedSegments);
-  console.log(`[Diagnostic] Reassembled result (len ${result.length}): ${JSON.stringify(result)}`);
+
+  // 5. Apply sentence deduplication
+  const dedupResult = deduplicate(result, 0.65);
+  result = dedupResult.text;
+
+  // 6. Apply structural compaction
+  const compactResult = compact(result);
+  result = compactResult.text;
+
+  // 7. Apply whitespace minification (final pass)
+  const minifyResult = minify(result);
+  result = minifyResult.text;
 
   return {
     result,

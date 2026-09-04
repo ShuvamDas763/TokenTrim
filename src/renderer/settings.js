@@ -94,9 +94,21 @@ async function loadSettings() {
       btn.classList.toggle('active', btn.dataset.preset === currentPreset);
     });
 
-    document.getElementById('tokenThreshold').value = settings.tokenThreshold || 250;
+    const targetVal = settings.compressionTarget || 0.5;
+    document.getElementById('compressionTarget').value = targetVal;
+    document.getElementById('compressionTargetDisplay').textContent = Math.round(targetVal * 100) + '%';
+    document.getElementById('enableCloudFallback').checked = settings.enableCloudFallback || false;
 
     applyTheme(settings.theme || 'command-center');
+
+    // Load session stats
+    const stats = await window.trimtoken.getSessionStats();
+    if (stats) {
+      document.getElementById('statsTokensSaved').textContent = stats.totalSavedTokens.toLocaleString();
+      document.getElementById('statsAvgReduction').textContent = stats.averageReductionPercent + '%';
+      document.getElementById('statsBestReduction').textContent = stats.bestReductionPercent + '%';
+      document.getElementById('statsApiCalls').textContent = stats.apiCallsMade;
+    }
 
     setStatus('Settings loaded');
   } catch (err) {
@@ -114,7 +126,8 @@ async function saveSettings() {
       tier1Preview: document.getElementById('tier1Preview').checked,
       showBackgroundVideo: document.getElementById('showBackgroundVideo').checked,
       compressionPreset: currentPreset,
-      tokenThreshold: parseInt(document.getElementById('tokenThreshold').value) || 250,
+      compressionTarget: parseFloat(document.getElementById('compressionTarget').value) || 0.5,
+      enableCloudFallback: document.getElementById('enableCloudFallback').checked,
       theme: currentTheme,
     };
 
@@ -173,6 +186,10 @@ document.addEventListener('click', (e) => {
 
 document.getElementById('showBackgroundVideo').addEventListener('change', async () => {
   await saveSettings();
+});
+
+document.getElementById('compressionTarget').addEventListener('input', (e) => {
+  document.getElementById('compressionTargetDisplay').textContent = Math.round(e.target.value * 100) + '%';
 });
 
 // ── Preset buttons ───────────────────────────────────────────────

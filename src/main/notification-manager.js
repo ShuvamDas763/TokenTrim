@@ -20,12 +20,12 @@ class NotificationManager {
    * @param {object} event - Compression event metadata
    */
   notifyCompressionSuccess(event) {
-    const { originalTokens, compressedTokens, tier, provider, durationMs } = event;
+    const { originalTokens, compressedTokens, tier, provider, durationMs, passes } = event;
     const percentSaved = Math.round(
       ((originalTokens - compressedTokens) / originalTokens) * 100
     );
-    const tierLabel = tier === "tier0" ? "Local" : `API (${provider})`;
-    const message = `✓ Compressed ${originalTokens} → ${compressedTokens} tokens (${percentSaved}% saved, ${tierLabel}, ${durationMs}ms)`;
+    const passInfo = passes ? ` (${passes} passes)` : '';
+    const message = `✓ Compressed ${originalTokens} → ${compressedTokens} tokens (${percentSaved}% saved, Local${passInfo}, ${durationMs}ms)`;
 
     this.show(message, "success");
   }

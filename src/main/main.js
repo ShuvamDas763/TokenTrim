@@ -252,6 +252,8 @@ ipcMain.handle('reset-phrase-log', () => phraseLog.reset());
 ipcMain.handle('toggle-phrase-exclusion', (event, phrase, excluded) => 
   phraseLog.toggleExclusion(phrase, excluded)
 );
+const sessionAnalytics = require('./session-analytics');
+ipcMain.handle('get-session-stats', () => sessionAnalytics.getStats());
 
 ipcMain.on('close-settings', () => {
   if (settingsWindow) settingsWindow.close();
